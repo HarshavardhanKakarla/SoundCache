@@ -1,10 +1,21 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-// On Android Emulator, 10.0.2.2 points to host machine's localhost
-// On iOS simulator / Web, localhost works
-let API_BASE_URL =
-  Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+function getDefaultApiUrl() {
+  // Automatically detect computer's LAN IP when running via Expo on a physical device
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const ip = hostUri.split(':')[0];
+    return `http://${ip}:3000`;
+  }
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:3000';
+  }
+  return 'http://10.1.27.212:3000';
+}
+
+let API_BASE_URL = getDefaultApiUrl();
 
 export function setCustomApiUrl(url) {
   if (url && url.trim()) {
