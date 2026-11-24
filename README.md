@@ -5,6 +5,18 @@ SoundCache allows users to anchor voice notes, audio stories, secret confessions
 
 ---
 
+## 📸 Interface Previews
+
+### Web Dashboard & Spatial Radar
+<img src="assets/preview-web.png" alt="SoundCache Desktop Dashboard" width="100%">
+
+### Mobile Device Interface
+<p align="center">
+  <img src="assets/preview-mobile.png" alt="SoundCache Mobile Preview" width="360" style="border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+</p>
+
+---
+
 ## ⚡ Core Features
 
 1. **Physical Discovery & Proximity Radar**:
