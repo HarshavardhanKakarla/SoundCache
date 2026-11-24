@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SoundCache — Spatial Audio Geocaching</title>
+  
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Leaflet Dark Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <style>
+    :root {
+      --bg-base: #06090e;
+      --bg-surface: #0b111a;
+      --bg-card: #101926;
+      --bg-card-hover: #152234;
+      --border-subtle: rgba(255, 255, 255, 0.07);
+      --border-focus: rgba(0, 242, 254, 0.5);
+      
+      --cyan-400: #00f2fe;
+      --cyan-glow: rgba(0, 242, 254, 0.25);
+      --emerald-400: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.2);
+      --rose-400: #f43f5e;
+      --rose-glow: rgba(244, 63, 94, 0.2);
+      --amber-400: #f59e0b;
+      --indigo-400: #818cf8;
+      
+      --text-main: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: -20%;
+      left: 30%;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(0, 242, 254, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    header {
+      background: rgba(11, 17, 26, 0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border-subtle);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: #06090e;
+      box-shadow: 0 0 24px var(--cyan-glow);
+    }
+
+    .brand-info h1 {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+      background: rgba(0, 242, 254, 0.12);
+      color: var(--cyan-400);
+      border: 1px solid rgba(0, 242, 254, 0.25);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .brand-info p {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .nav-stats {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .stat-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      padding: 6px 14px;
+      border-radius: 30px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .stat-pill strong {
+      color: var(--text-main);
+      font-family: var(--font-mono);
+    }
+
+    .status-live {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--emerald-400);
+      box-shadow: 0 0 10px var(--emerald-400);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+
+    .app-viewport {
+      flex: 1;
+      max-width: 1540px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px 32px;
+      display: grid;
+      grid-template-columns: 460px 1fr;
+      gap: 28px;
+      position: relative;
+      z-index: 1;
+    }
+
+    @media (max-width: 1100px) {
+      .app-viewport {
+        grid-template-columns: 1fr;
+        padding: 16px;
+      }
+    }
+
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 20px;
+      padding: 22px;
+      position: relative;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-title i {
+      color: var(--cyan-400);
+      font-size: 14px;
+    }
+
+    .view-toggle {
+      display: flex;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      padding: 3px;
+      border-radius: 10px;
+      gap: 2px;
+    }
+
+    .view-tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 5px 12px;
+      border-radius: 7px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .view-tab-btn.active {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+    }
+
+    .radar-display-frame {
+      position: relative;
+      width: 100%;
+      height: 380px;
+      background: #040810;
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #radarCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #leafletMap {
+      width: 100%;
+      height: 100%;
+      display: none;
+      z-index: 1;
+    }
+
+    .radar-hud-overlay {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: rgba(0, 242, 254, 0.85);
+      pointer-events: none;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: rgba(6, 10, 16, 0.65);
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 242, 254, 0.2);
+    }
+
+    .radar-hud-bottom {
+      position: absolute;
+      bottom: 12px;
+      right: 14px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .zone-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid var(--emerald-400);
+      color: var(--emerald-400);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.5px;
+    }
+
+    .telemetry-bar {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 20px;
+    }
+
+    .telemetry-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .coords-readout {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--cyan-400);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stepper-actions {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .btn-step {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .btn-step:hover {
+      background: rgba(0, 242, 254, 0.08);
+      border-color: var(--cyan-400);
+      color: var(--text-main);
+    }
+
+    .btn-step.highlight {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.35);
+      color: var(--emerald-400);
+    }
+
+    .btn-step.highlight:hover {
+      background: var(--emerald-400);
+      color: #06090e;
+    }
+
+    .studio-box {
+      background: linear-gradient(180deg, #101a28 0%, #0d1420 100%);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 20px;
+      position: relative;
+    }
+
+    .studio-title-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .studio-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .studio-label i {
+      color: var(--rose-400);
+    }
+
+    .recorder-workbench {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: #090e16;
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 12px 18px;
+      margin-bottom: 14px;
+    }
+
+    .rec-btn-core {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--rose-400);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 0 16px var(--rose-glow);
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .rec-btn-core.recording {
+      background: #ffffff;
+      color: var(--rose-400);
+      animation: recPulse 1s infinite;
+    }
+
+    @keyframes recPulse {
+      0% { box-shadow: 0 0 10px rgba(244, 63, 94, 0.4); }
+      50% { box-shadow: 0 0 24px rgba(244, 63, 94, 0.8); }
+      100% { box-shadow: 0 0 10px rgba(244, 63, 94, 0.4); }
+    }
+
+    .workbench-mid {
+      flex: 1;
+    }
+
+    .timer-display {
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .timer-display small {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    .wave-canvas-mini {
+      width: 100%;
+      height: 24px;
+      display: block;
+      margin-top: 4px;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 10px;
+    }
+
+    .pro-input {
+      background: #090e16;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      color: var(--text-main);
+      padding: 10px 14px;
+      font-size: 13px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+
+    .pro-input:focus {
+      outline: none;
+      border-color: var(--cyan-400);
+    }
+
+    .btn-drop-launch {
+      background: linear-gradient(135deg, var(--cyan-400) 0%, var(--secondary) 100%);
+      color: #06090e;
+      border: none;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 16px var(--cyan-glow);
+      transition: transform 0.15s, box-shadow 0.15s;
+      margin-top: 6px;
+    }
+
+    .btn-drop-launch:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(0, 242, 254, 0.4);
+    }
+
+    .filter-scroller {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .filter-pill {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .filter-pill.active {
+      background: var(--cyan-400);
+      color: #06090e;
+      border-color: var(--cyan-400);
+      font-weight: 700;
+    }
+
+    .signals-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: calc(100vh - 220px);
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .signals-grid::-webkit-scrollbar {
+      width: 5px;
+    }
+    .signals-grid::-webkit-scrollbar-thumb {
+      background: var(--border-subtle);
+      border-radius: 4px;
+    }
+
+    .capsule-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 16px;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .capsule-item::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: var(--border-subtle);
+    }
+
+    .capsule-item.unlocked {
+      background: #0d1a22;
+      border-color: rgba(16, 185, 129, 0.35);
+    }
+
+    .capsule-item.unlocked::before {
+      background: var(--emerald-400);
+      box-shadow: 0 0 10px var(--emerald-400);
+    }
+
+    .capsule-item.locked::before {
+      background: var(--rose-400);
+    }
+
+    .item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .cat-tag {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .proximity-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+
+    .proximity-badge.unlocked {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--emerald-400);
+    }
+
+    .proximity-badge.locked {
+      background: rgba(244, 63, 94, 0.12);
+      color: var(--rose-400);
+    }
+
+    .item-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 4px;
+    }
+
+    .item-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+
+    .item-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid var(--border-subtle);
+      padding-top: 10px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .meta-user {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .action-btn {
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+
+    .btn-play-trigger {
+      background: var(--emerald-400);
+      color: #06090e;
+      box-shadow: 0 0 14px var(--emerald-glow);
+    }
+
+    .btn-play-trigger:hover {
+      transform: scale(1.03);
+    }
+
+    .btn-step-toward {
+      background: rgba(0, 242, 254, 0.08);
+      color: var(--cyan-400);
+      border: 1px solid rgba(0, 242, 254, 0.25);
+    }
+
+    .btn-step-toward:hover {
+      background: rgba(0, 242, 254, 0.18);
+    }
+
+    .dock-player {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(140px);
+      width: 90%;
+      max-width: 680px;
+      background: rgba(16, 25, 38, 0.92);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(0, 242, 254, 0.3);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7), 0 0 30px var(--cyan-glow);
+      border-radius: 18px;
+      padding: 16px 22px;
+      z-index: 2000;
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .dock-player.active {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .dock-row-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .dock-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .dock-vinyl {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: conic-gradient(from 0deg, #10b981, #00f2fe, #10b981);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #06090e;
+      animation: spinVinyl 4s linear infinite;
+    }
+
+    @keyframes spinVinyl {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .dock-text h4 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .dock-text p {
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .dock-controls {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .dock-btn {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 16px;
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+
+    .dock-btn:hover {
+      color: var(--text-main);
+    }
+
+    .dock-play-circle {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: var(--cyan-400);
+      color: #06090e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: pointer;
+      box-shadow: 0 0 16px var(--cyan-glow);
+    }
+
+    .dock-wave-bars {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 28px;
+      gap: 3px;
+    }
+
+    .spectrum-bar {
+      flex: 1;
+      height: 20%;
+      background: rgba(0, 242, 254, 0.3);
+      border-radius: 2px;
+      transition: height 0.1s ease;
+    }
+
+    .dock-scrub-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .progress-track {
+      flex: 1;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
+      position: relative;
+      cursor: pointer;
+    }
+
+    .progress-fill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      width: 0%;
+      background: var(--cyan-400);
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand-group">
+      <div class="brand-logo">
+        <i class="fa-solid fa-satellite-dish"></i>
+      </div>
+      <div class="brand-info">
+        <h1>SoundCache <span class="brand-badge">Spatial Engine</span></h1>
+        <p>Geo-locked acoustic drops • Physical 30m discovery boundary</p>
+      </div>
+    </div>
+
+    <div class="nav-stats">
+      <div class="stat-pill">
+        <div class="status-live"></div>
+        <span>Status: <strong>Active</strong></span>
+      </div>
+      <div class="stat-pill">
+        <i class="fa-solid fa-signal" style="color: var(--cyan-400)"></i>
+        <span>Signals: <strong id="headerSignalCount">5 Detected</strong></span>
+      </div>
+      <div class="stat-pill">
+        <i class="fa-solid fa-unlock-keyhole" style="color: var(--emerald-400)"></i>
+        <span>In Range: <strong id="headerUnlockedCount">1 Unlocked</strong></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Viewport -->
+  <div class="app-viewport">
+
+    <!-- Left Column: Scope & Controls -->
+    <div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <i class="fa-solid fa-crosshairs"></i>
+            <span>Spatial Radar Scope</span>
+          </div>
+          <div class="view-toggle">
+            <button class="view-tab-btn active" id="tabRadar" onclick="switchDisplayMode('radar')">
+              <i class="fa-solid fa-radar"></i> Radar
+            </button>
+            <button class="view-tab-btn" id="tabMap" onclick="switchDisplayMode('map')">
+              <i class="fa-solid fa-map"></i> Dark Map
+            </button>
+          </div>
+        </div>
+
+        <!-- Radar / Map Frame -->
+        <div class="radar-display-frame">
+          <!-- Canvas Radar -->
+          <canvas id="radarCanvas"></canvas>
+          <!-- Leaflet Map Container -->
+          <div id="leafletMap"></div>
+
+          <!-- Radar Overlay HUD -->
+          <div class="radar-hud-overlay">
+            <div>RANGE: <strong>300M RADIAL</strong></div>
+            <div>STATUS: <strong style="color: var(--emerald-400)">TRACKING</strong></div>
+            <div>HEADING: <strong id="radarHeading">042° NE</strong></div>
+          </div>
+
+          <div class="radar-hud-bottom">
+            <div class="zone-indicator">
+              <i class="fa-solid fa-shield-halved"></i> 30M UNLOCK GEOFENCE
+            </div>
+          </div>
+        </div>
+
+        <!-- Telemetry & Stepper Toolbar -->
+        <div class="telemetry-bar">
+          <div class="telemetry-row">
+            <div class="coords-readout">
+              <i class="fa-solid fa-location-crosshairs"></i>
+              <span id="coordsDisplay">17.38500° N, 78.48670° E</span>
+            </div>
+            <button class="btn-step" onclick="recenterToRealGps()" style="padding: 4px 8px;">
+              <i class="fa-solid fa-compass"></i> Real GPS
+            </button>
+          </div>
+
+          <!-- Walk Simulation Steps -->
+          <div class="stepper-actions">
+            <button class="btn-step" onclick="stepOffset(0.00012, 0)">
+              <i class="fa-solid fa-arrow-up"></i> North (+15m)
+            </button>
+            <button class="btn-step" onclick="stepOffset(-0.00012, 0)">
+              <i class="fa-solid fa-arrow-down"></i> South (-15m)
+            </button>
+            <button class="btn-step highlight" onclick="jumpToNearestTarget()">
+              <i class="fa-solid fa-bolt"></i> Jump to Lock
+            </button>
+            <button class="btn-step" onclick="seedSamplePins()">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> Seed Pins
+            </button>
+          </div>
+        </div>
+
+        <!-- Audio Studio Drop Section -->
+        <div class="studio-box">
+          <div class="studio-title-bar">
+            <div class="studio-label">
+              <i class="fa-solid fa-microphone-lines"></i>
+              <span>Spatial Drop Studio</span>
+            </div>
+            <span style="font-size: 11px; color: var(--text-muted);">Max 30-sec snippet</span>
+          </div>
+
+          <!-- Mic Workbench -->
+          <div class="recorder-workbench">
+            <button class="rec-btn-core" id="micBtn" onclick="toggleRecordState()">
+              <i class="fa-solid fa-microphone" id="micIcon"></i>
+            </button>
+            <div class="workbench-mid">
+              <div class="timer-display">
+                <span id="recTimer">00:00</span>
+                <small id="recStatus">Click mic to record</small>
+              </div>
+              <canvas class="wave-canvas-mini" id="miniWaveCanvas"></canvas>
+            </div>
+          </div>
+
+          <!-- Metadata Fields -->
+          <div class="input-group">
+            <div class="field-row">
+              <input type="text" id="dropTitleInput" class="pro-input" placeholder="Capsule Title (e.g. Hidden Rooftop Chimes)">
+              <select id="dropCategoryInput" class="pro-input">
+                <option value="Story">📖 Story</option>
+                <option value="Secret">🔒 Secret</option>
+                <option value="Music">🎵 Music & Vibe</option>
+                <option value="Whisper">💬 Whisper</option>
+                <option value="History">🏛️ Urban Lore</option>
+              </select>
+            </div>
+            <input type="text" id="dropAuthorInput" class="pro-input" placeholder="Author Handle (Default: Anonymous Explorer)">
+
+            <button class="btn-drop-launch" onclick="uploadCapsuleDrop()">
+              <i class="fa-solid fa-satellite"></i> Anchor Audio Capsule to Current GPS
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Discovered Signals Feed -->
+    <div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <i class="fa-solid fa-tower-broadcast"></i>
+            <span>Discovered Frequencies</span>
+          </div>
+          <button class="btn-step" onclick="loadNearbyData()">
+            <i class="fa-solid fa-arrows-rotate"></i> Scan Now
+          </button>
+        </div>
+
+        <!-- Category Pills Filter -->
+        <div class="filter-scroller">
+          <div class="filter-pill active" onclick="setFilter('All', this)">
+            <i class="fa-solid fa-globe"></i> All Signals
+          </div>
+          <div class="filter-pill" onclick="setFilter('Story', this)">
+            <i class="fa-solid fa-book-open"></i> Stories
+          </div>
+          <div class="filter-pill" onclick="setFilter('Secret', this)">
+            <i class="fa-solid fa-key"></i> Secrets
+          </div>
+          <div class="filter-pill" onclick="setFilter('Music', this)">
+            <i class="fa-solid fa-music"></i> Music & Vibe
+          </div>
+          <div class="filter-pill" onclick="setFilter('Whisper', this)">
+            <i class="fa-solid fa-comment-dots"></i> Whispers
+          </div>
+          <div class="filter-pill" onclick="setFilter('History', this)">
+            <i class="fa-solid fa-landmark"></i> Urban Lore
+          </div>
+        </div>
+
+        <!-- Capsule Feed List -->
+        <div class="signals-grid" id="capsuleFeedList">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Floating Dock Audio Player -->
+  <div class="dock-player" id="dockPlayer">
+    <div class="dock-row-top">
+      <div class="dock-info">
+        <div class="dock-vinyl">
+          <i class="fa-solid fa-compact-disc"></i>
+        </div>
+        <div class="dock-text">
+          <h4 id="dockTitle">Whispering Willow Secret</h4>
+          <p id="dockSubtitle">EchoSeeker • Secret • Decoded 18m away</p>
+        </div>
+      </div>
+
+      <div class="dock-controls">
+        <button class="dock-btn" onclick="toggleHeartLike()">
+          <i class="fa-regular fa-heart" id="dockHeartIcon"></i>
+          <span id="dockLikeCount" style="font-size: 11px; margin-left: 4px;">19</span>
+        </button>
+        <div class="dock-play-circle" onclick="togglePlayPause()">
+          <i class="fa-solid fa-play" id="dockPlayIcon"></i>
+        </div>
+        <button class="dock-btn" onclick="closeDockPlayer()">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Animated Waveform Spectrum -->
+    <div class="dock-wave-bars" id="dockWaveBars"></div>
+
+    <!-- Scrubber -->
+    <div class="dock-scrub-row">
+      <span id="dockCurrentTime">0:00</span>
+      <div class="progress-track" id="progressTrack" onclick="seekDockAudio(event)">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <span id="dockDuration">0:18</span>
+    </div>
+
+    <audio id="globalAudio" style="display: none;"></audio>
+  </div>
+
+  <script>
+    let state = {
+      lat: 17.38500,
+      lng: 78.48670,
+      capsules: [],
+      activeFilter: 'All',
+      activeMode: 'radar',
+      currentPlaying: null,
+      isPlaying: false,
+      hasLiked: false,
+    };
+
+    const radarCanvas = document.getElementById('radarCanvas');
+    const radarCtx = radarCanvas.getContext('2d');
+    let sweepAngle = 0;
+
+    function resizeRadar() {
+      const parent = radarCanvas.parentElement;
+      radarCanvas.width = parent.clientWidth;
+      radarCanvas.height = parent.clientHeight;
+    }
+    window.addEventListener('resize', resizeRadar);
+    resizeRadar();
+
+    let leafletMapInstance = null;
+    let userMarker = null;
+    let geofenceCircle = null;
+    let capsuleMarkers = [];
+
+    function initLeafletMap() {
+      if (leafletMapInstance) return;
+      leafletMapInstance = L.map('leafletMap', {
+        zoomControl: false,
+        attributionControl: false
+      }).setView([state.lat, state.lng], 17);
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+        subdomains: 'abcd',
+      }).addTo(leafletMapInstance);
+
+      geofenceCircle = L.circle([state.lat, state.lng], {
+        radius: 30,
+        color: '#10b981',
+        weight: 1.5,
+        fillColor: '#10b981',
+        fillOpacity: 0.12,
+        dashArray: '4, 4'
+      }).addTo(leafletMapInstance);
+
+      const userIcon = L.divIcon({
+        className: 'custom-user-marker',
+        html: `<div style="width: 14px; height: 14px; background: #00f2fe; border: 2px solid #ffffff; border-radius: 50%; box-shadow: 0 0 12px #00f2fe;"></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7]
+      });
+      userMarker = L.marker([state.lat, state.lng], { icon: userIcon }).addTo(leafletMapInstance);
+    }
+
+    function updateLeafletPositions() {
+      if (!leafletMapInstance) return;
+      userMarker.setLatLng([state.lat, state.lng]);
+      geofenceCircle.setLatLng([state.lat, state.lng]);
+      leafletMapInstance.panTo([state.lat, state.lng]);
+
+      capsuleMarkers.forEach(m => leafletMapInstance.removeLayer(m));
+      capsuleMarkers = [];
+
+      state.capsules.forEach(cap => {
+        const isUnlocked = cap.isUnlocked;
+        const color = isUnlocked ? '#10b981' : '#f43f5e';
+        const iconHtml = `<div style="background: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 0 10px ${color};"></div>`;
+        const marker = L.marker([cap.latitude, cap.longitude], {
+          icon: L.divIcon({ html: iconHtml, className: 'cap-marker', iconSize: [12, 12], iconAnchor: [6, 6] })
+        }).addTo(leafletMapInstance);
+        
+        marker.bindPopup(`<b>${cap.title}</b><br>${cap.category} • ${cap.distanceMeters}m`);
+        capsuleMarkers.push(marker);
+      });
+    }
+
+    function switchDisplayMode(mode) {
+      state.activeMode = mode;
+      document.getElementById('tabRadar').classList.toggle('active', mode === 'radar');
+      document.getElementById('tabMap').classList.toggle('active', mode === 'map');
+
+      if (mode === 'radar') {
+        radarCanvas.style.display = 'block';
+        document.getElementById('leafletMap').style.display = 'none';
+      } else {
+        radarCanvas.style.display = 'none';
+        document.getElementById('leafletMap').style.display = 'block';
+        initLeafletMap();
+        setTimeout(() => {
+          leafletMapInstance.invalidateSize();
+          updateLeafletPositions();
+        }, 100);
+      }
+    }
+
+    function renderRadarFrame() {
+      if (state.activeMode !== 'radar') {
+        requestAnimationFrame(renderRadarFrame);
+        return;
+      }
+
+      const w = radarCanvas.width;
+      const h = radarCanvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+      const maxR = Math.min(cx, cy) - 24;
+
+      radarCtx.clearRect(0, 0, w, h);
+
+      radarCtx.strokeStyle = 'rgba(0, 242, 254, 0.12)';
+      radarCtx.lineWidth = 1;
+
+      [1, 0.72, 0.48].forEach(scale => {
+        radarCtx.beginPath();
+        radarCtx.arc(cx, cy, maxR * scale, 0, Math.PI * 2);
+        radarCtx.stroke();
+      });
+
+      const geofenceRadius = maxR * 0.28;
+      radarCtx.strokeStyle = '#10b981';
+      radarCtx.lineWidth = 1.5;
+      radarCtx.setLineDash([4, 4]);
+      radarCtx.beginPath();
+      radarCtx.arc(cx, cy, geofenceRadius, 0, Math.PI * 2);
+      radarCtx.stroke();
+      radarCtx.setLineDash([]);
+
+      radarCtx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+      radarCtx.beginPath();
+      radarCtx.moveTo(cx, 0); radarCtx.lineTo(cx, h);
+      radarCtx.moveTo(0, cy); radarCtx.lineTo(w, cy);
+      radarCtx.stroke();
+
+      sweepAngle += 0.03;
+      const beamX = cx + maxR * Math.cos(sweepAngle);
+      const beamY = cy + maxR * Math.sin(sweepAngle);
+
+      radarCtx.strokeStyle = 'rgba(0, 242, 254, 0.75)';
+      radarCtx.lineWidth = 2;
+      radarCtx.beginPath();
+      radarCtx.moveTo(cx, cy);
+      radarCtx.lineTo(beamX, beamY);
+      radarCtx.stroke();
+
+      const cone = radarCtx.createRadialGradient(cx, cy, 0, cx, cy, maxR);
+      cone.addColorStop(0, 'rgba(0, 242, 254, 0.2)');
+      cone.addColorStop(1, 'rgba(0, 242, 254, 0.0)');
+      radarCtx.fillStyle = cone;
+      radarCtx.beginPath();
+      radarCtx.arc(cx, cy, maxR, sweepAngle - 0.5, sweepAngle);
+      radarCtx.lineTo(cx, cy);
+      radarCtx.fill();
+
+      radarCtx.fillStyle = '#00f2fe';
+      radarCtx.shadowColor = '#00f2fe';
+      radarCtx.shadowBlur = 10;
+      radarCtx.beginPath();
+      radarCtx.arc(cx, cy, 5, 0, Math.PI * 2);
+      radarCtx.fill();
+      radarCtx.shadowBlur = 0;
+
+      state.capsules.forEach((cap, i) => {
+        const normDist = Math.min(cap.distanceMeters || 30, 260) / 260;
+        const r = 24 + normDist * (maxR - 30);
+        const angle = (i * (360 / Math.max(state.capsules.length, 1)) * Math.PI) / 180;
+        const bx = cx + r * Math.cos(angle);
+        const by = cy + r * Math.sin(angle);
+
+        radarCtx.fillStyle = cap.isUnlocked ? '#10b981' : '#f43f5e';
+        radarCtx.shadowColor = cap.isUnlocked ? '#10b981' : '#f43f5e';
+        radarCtx.shadowBlur = 8;
+        radarCtx.beginPath();
+        radarCtx.arc(bx, by, cap.isUnlocked ? 6 : 5, 0, Math.PI * 2);
+        radarCtx.fill();
+        radarCtx.shadowBlur = 0;
+      });
+
+      requestAnimationFrame(renderRadarFrame);
+    }
+    renderRadarFrame();
+
+    async function loadNearbyData() {
+      try {
+        const res = await fetch(`/api/capsules/nearby?lat=${state.lat}&lng=${state.lng}&maxDistance=5000`);
+        const data = await res.json();
+        state.capsules = data.capsules || [];
+        updateUI();
+        if (state.activeMode === 'map') updateLeafletPositions();
+      } catch (err) {
+        console.error('Fetch error:', err);
+      }
+    }
+
+    function updateUI() {
+      const unlockedCount = state.capsules.filter(c => c.isUnlocked).length;
+      document.getElementById('headerSignalCount').innerText = `${state.capsules.length} Detected`;
+      document.getElementById('headerUnlockedCount').innerText = `${unlockedCount} Unlocked`;
+      document.getElementById('coordsDisplay').innerText = `${state.lat.toFixed(5)}° N, ${state.lng.toFixed(5)}° E`;
+
+      const feed = document.getElementById('capsuleFeedList');
+      const filtered = state.capsules.filter(c => state.activeFilter === 'All' || c.category === state.activeFilter);
+
+      if (filtered.length === 0) {
+        feed.innerHTML = `
+          <div style="text-align: center; padding: 48px 16px; color: var(--text-muted);">
+            <i class="fa-solid fa-satellite" style="font-size: 28px; margin-bottom: 12px; color: var(--text-muted);"></i>
+            <p>No audio capsules found in this sector.</p>
+            <button class="btn-step" onclick="seedSamplePins()" style="margin: 14px auto 0;">Seed 5 Capsules Near You</button>
+          </div>
+        `;
+        return;
+      }
+
+      feed.innerHTML = filtered.map(cap => {
+        const isUnlocked = cap.isUnlocked;
+        const catIcons = {
+          Story: 'fa-book-open',
+          Secret: 'fa-key',
+          Music: 'fa-music',
+          Whisper: 'fa-comment-dots',
+          History: 'fa-landmark'
+        };
+        const iconClass = catIcons[cap.category] || 'fa-compact-disc';
+
+        return `
+          <div class="capsule-item ${isUnlocked ? 'unlocked' : 'locked'}">
+            <div class="item-header">
+              <span class="cat-tag">
+                <i class="fa-solid ${iconClass}"></i> ${cap.category}
+              </span>
+              <span class="proximity-badge ${isUnlocked ? 'unlocked' : 'locked'}">
+                <i class="fa-solid ${isUnlocked ? 'fa-lock-open' : 'fa-lock'}"></i>
+                ${isUnlocked ? 'UNLOCKED' : `${cap.distanceMeters}m away`}
+              </span>
+            </div>
+
+            <h3 class="item-title">${cap.title}</h3>
+            <p class="item-desc">
+              ${isUnlocked
+                ? (cap.description || 'Spatial voice drop decoded and ready to stream.')
+                : `Geo-locked frequency. Walk ${Math.max(0, cap.distanceMeters - 30)}m closer to decode and unlock audio stream.`}
+            </p>
+
+            <div class="item-footer">
+              <div class="meta-user">
+                <i class="fa-regular fa-user"></i>
+                <span>${cap.author || 'Anonymous'} • ${cap.duration || 15}s</span>
+              </div>
+
+              ${isUnlocked
+                ? `<button class="action-btn btn-play-trigger" onclick='launchDockPlayer(${JSON.stringify(cap).replace(/'/g, "&#39;")})'>
+                     <i class="fa-solid fa-play"></i> Listen
+                   </button>`
+                : `<button class="action-btn btn-step-toward" onclick="walkDirectlyTo(${cap.latitude}, ${cap.longitude})">
+                     <i class="fa-solid fa-person-walking"></i> Step Closer
+                   </button>`
+              }
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function setFilter(cat, elem) {
+      state.activeFilter = cat;
+      document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+      elem.classList.add('active');
+      updateUI();
+    }
+
+    function stepOffset(dLat, dLng) {
+      state.lat += dLat;
+      state.lng += dLng;
+      loadNearbyData();
+    }
+
+    function walkDirectlyTo(lat, lng) {
+      state.lat = lat;
+      state.lng = lng;
+      loadNearbyData();
+    }
+
+    function jumpToNearestTarget() {
+      if (state.capsules.length > 0) {
+        state.lat = state.capsules[0].latitude;
+        state.lng = state.capsules[0].longitude;
+        loadNearbyData();
+      }
+    }
+
+    async function seedSamplePins() {
+      await fetch('/api/capsules/seed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latitude: state.lat, longitude: state.lng })
+      });
+      loadNearbyData();
+    }
+
+    function recenterToRealGps() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          state.lat = pos.coords.latitude;
+          state.lng = pos.coords.longitude;
+          loadNearbyData();
+        }, err => alert('Could not get GPS fix; keeping current coords.'));
+      }
+    }
+
+    const dockPlayer = document.getElementById('dockPlayer');
+    const globalAudio = document.getElementById('globalAudio');
+    const dockWaveBars = document.getElementById('dockWaveBars');
+
+    dockWaveBars.innerHTML = Array.from({ length: 36 }, () => `<div class="spectrum-bar"></div>`).join('');
+    const spectrumElements = dockWaveBars.querySelectorAll('.spectrum-bar');
+
+    let waveAnimInterval = null;
+
+    function launchDockPlayer(cap) {
+      state.currentPlaying = cap;
+      state.hasLiked = false;
+      document.getElementById('dockTitle').innerText = cap.title;
+      document.getElementById('dockSubtitle').innerText = `${cap.author || 'Anonymous'} • ${cap.category} • Decoded within 30m`;
+      document.getElementById('dockLikeCount').innerText = cap.likes || 0;
+      document.getElementById('dockHeartIcon').className = 'fa-regular fa-heart';
+      document.getElementById('dockHeartIcon').style.color = '';
+
+      globalAudio.src = cap.audioUrl;
+      globalAudio.play().then(() => {
+        state.isPlaying = true;
+        updatePlayIcon();
+        startWaveformAnimation();
+      }).catch(e => console.log('Autoplay handled'));
+
+      fetch(`/api/capsules/${cap._id}/listen`, { method: 'POST' });
+      dockPlayer.classList.add('active');
+    }
+
+    function togglePlayPause() {
+      if (!globalAudio.src) return;
+      if (globalAudio.paused) {
+        globalAudio.play();
+        state.isPlaying = true;
+        startWaveformAnimation();
+      } else {
+        globalAudio.pause();
+        state.isPlaying = false;
+        stopWaveformAnimation();
+      }
+      updatePlayIcon();
+    }
+
+    function updatePlayIcon() {
+      const icon = document.getElementById('dockPlayIcon');
+      icon.className = state.isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play';
+    }
+
+    function closeDockPlayer() {
+      globalAudio.pause();
+      state.isPlaying = false;
+      stopWaveformAnimation();
+      dockPlayer.classList.remove('active');
+    }
+
+    function startWaveformAnimation() {
+      if (waveAnimInterval) clearInterval(waveAnimInterval);
+      waveAnimInterval = setInterval(() => {
+        spectrumElements.forEach(bar => {
+          const height = Math.floor(Math.random() * 85) + 15;
+          bar.style.height = `${height}%`;
+          bar.style.background = '#00f2fe';
+        });
+      }, 100);
+    }
+
+    function stopWaveformAnimation() {
+      if (waveAnimInterval) clearInterval(waveAnimInterval);
+      spectrumElements.forEach(bar => {
+        bar.style.height = '15%';
+        bar.style.background = 'rgba(0, 242, 254, 0.25)';
+      });
+    }
+
+    globalAudio.ontimeupdate = () => {
+      const current = globalAudio.currentTime || 0;
+      const duration = globalAudio.duration || (state.currentPlaying?.duration || 18);
+      const pct = (current / duration) * 100;
+      document.getElementById('progressFill').style.width = `${pct}%`;
+
+      const m = Math.floor(current / 60);
+      const s = Math.floor(current % 60);
+      document.getElementById('dockCurrentTime').innerText = `${m}:${s < 10 ? '0' + s : s}`;
+
+      const dm = Math.floor(duration / 60);
+      const ds = Math.floor(duration % 60);
+      document.getElementById('dockDuration').innerText = `${dm}:${ds < 10 ? '0' + ds : ds}`;
+    };
+
+    globalAudio.onended = () => {
+      state.isPlaying = false;
+      updatePlayIcon();
+      stopWaveformAnimation();
+    };
+
+    function seekDockAudio(e) {
+      const track = document.getElementById('progressTrack');
+      const rect = track.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const pct = clickX / rect.width;
+      globalAudio.currentTime = pct * globalAudio.duration;
+    }
+
+    async function toggleHeartLike() {
+      if (!state.currentPlaying || state.hasLiked) return;
+      state.hasLiked = true;
+      document.getElementById('dockHeartIcon').className = 'fa-solid fa-heart';
+      document.getElementById('dockHeartIcon').style.color = 'var(--rose-400)';
+
+      const res = await fetch(`/api/capsules/${state.currentPlaying._id}/like`, { method: 'POST' });
+      const data = await res.json();
+      document.getElementById('dockLikeCount').innerText = data.likes;
+    }
+
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordTimerInterval = null;
+    let recordedAudioBlob = null;
+    let audioContext = null;
+    let analyser = null;
+    let visualizerAnim = null;
+
+    async function toggleRecordState() {
+      const micBtn = document.getElementById('micBtn');
+      const micIcon = document.getElementById('micIcon');
+      const recStatus = document.getElementById('recStatus');
+
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        clearInterval(recordTimerInterval);
+        cancelAnimationFrame(visualizerAnim);
+        micBtn.classList.remove('recording');
+        micIcon.className = 'fa-solid fa-microphone';
+        recStatus.innerText = 'Audio ready to anchor';
+      } else {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          recordedChunks = [];
+          let seconds = 0;
+
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          const source = audioContext.createMediaStreamSource(stream);
+          analyser = audioContext.createAnalyser();
+          analyser.fftSize = 64;
+          source.connect(analyser);
+
+          drawMiniVisualizer();
+
+          mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+          mediaRecorder.onstop = () => {
+            recordedAudioBlob = new Blob(recordedChunks, { type: 'audio/mp3' });
+          };
+
+          mediaRecorder.start();
+          micBtn.classList.add('recording');
+          micIcon.className = 'fa-solid fa-stop';
+          recStatus.innerText = 'Recording live...';
+
+          recordTimerInterval = setInterval(() => {
+            seconds++;
+            const s = seconds < 10 ? '0' + seconds : seconds;
+            document.getElementById('recTimer').innerText = `00:${s}`;
+            if (seconds >= 30) toggleRecordState();
+          }, 1000);
+        } catch (err) {
+          recStatus.innerText = 'Simulation mode audio';
+          document.getElementById('recTimer').innerText = '00:15';
+          recordedAudioBlob = new Blob(['simulated-recording'], { type: 'audio/mp3' });
+        }
+      }
+    }
+
+    function drawMiniVisualizer() {
+      const canvas = document.getElementById('miniWaveCanvas');
+      const ctx = canvas.getContext('2d');
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      function draw() {
+        visualizerAnim = requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(dataArray);
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const barWidth = (canvas.width / bufferLength) * 2;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          const barHeight = (dataArray[i] / 255) * canvas.height;
+          ctx.fillStyle = '#00f2fe';
+          ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
+          x += barWidth;
+        }
+      }
+      draw();
+    }
+
+    async function uploadCapsuleDrop() {
+      const title = document.getElementById('dropTitleInput').value.trim();
+      const author = document.getElementById('dropAuthorInput').value.trim() || 'Anonymous Explorer';
+      const category = document.getElementById('dropCategoryInput').value;
+
+      if (!title) {
+        alert('Please provide a title for your audio drop!');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('author', author);
+      formData.append('category', category);
+      formData.append('duration', 18);
+      formData.append('latitude', state.lat);
+      formData.append('longitude', state.lng);
+
+      if (recordedAudioBlob) {
+        formData.append('audio', recordedAudioBlob, 'drop.mp3');
+      }
+
+      const res = await fetch('/api/capsules', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (res.ok) {
+        alert(`🚀 Capsule "${title}" anchored at [${state.lat.toFixed(5)}, ${state.lng.toFixed(5)}]!`);
+        document.getElementById('dropTitleInput').value = '';
+        loadNearbyData();
+      } else {
+        alert('Failed to drop capsule.');
+      }
+    }
+
+    loadNearbyData();
+  </script>
+</body>
+</html>

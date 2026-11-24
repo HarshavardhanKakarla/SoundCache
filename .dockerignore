@@ -1,0 +1,6 @@
+node_modules
+.git
+.expo
+api/node_modules
+api/uploads/*
+!api/uploads/.gitkeep
