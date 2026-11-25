@@ -16,9 +16,13 @@ const capsuleSchema = new mongoose.Schema({
     enum: ['Story', 'Secret', 'Music', 'Vibe', 'History', 'Whisper'],
     default: 'Story',
   },
-  audioUrl: {
-    type: String,
+  audioData: {
+    type: Buffer,
     required: true,
+  },
+  audioMimeType: {
+    type: String,
+    default: 'audio/mp4',
   },
   duration: {
     type: Number,
@@ -63,4 +67,3 @@ const capsuleSchema = new mongoose.Schema({
 capsuleSchema.index({ location: '2dsphere' });
 
 module.exports = mongoose.model('Capsule', capsuleSchema);
-

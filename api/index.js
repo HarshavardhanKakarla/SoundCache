@@ -1,8 +1,10 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -25,10 +27,10 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
-// Multer setup — store in memory buffer so audio persists with capsule
+// Multer setup — store in memory buffer so audio can be persisted to MongoDB
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB max
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB max (within MongoDB 16MB doc limit)
 });
 
 // Haversine distance calculation in meters between two lat/lng points
@@ -62,17 +64,44 @@ function resolveMimeType(file) {
   return 'audio/mp4';
 }
 
-// --------------- IN-MEMORY CAPSULE STORE --------------- //
+// --------------- DATABASE CONNECTION --------------- //
+let isMongoConnected = false;
+let CapsuleModel = null;
 const memoryCapsules = [];
+
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (MONGODB_URI) {
+  mongoose
+    .connect(MONGODB_URI, { serverSelectionTimeoutMS: 5000 })
+    .then(() => {
+      isMongoConnected = true;
+      CapsuleModel = require('./models/capsule');
+      console.log('✓ Connected to MongoDB Atlas with 2dsphere indexing support');
+    })
+    .catch((err) => {
+      console.warn('! MongoDB connection failed, using in-memory fallback:', err.message);
+      isMongoConnected = false;
+    });
+} else {
+  console.log('! MONGODB_URI not set in environment, using in-memory spatial storage');
+}
 
 // ---------------- ROUTES ---------------- //
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  let capsuleCount = memoryCapsules.length;
+  if (isMongoConnected && CapsuleModel) {
+    try {
+      capsuleCount = await CapsuleModel.countDocuments();
+    } catch (e) {}
+  }
   res.json({
     status: 'ok',
     app: 'SoundCache API',
-    capsuleCount: memoryCapsules.length,
+    mode: isMongoConnected ? 'MongoDB (2dsphere)' : 'In-Memory Spatial Engine',
+    capsuleCount,
     uptime: process.uptime(),
   });
 });
@@ -88,11 +117,28 @@ app.get('/api/capsules/nearby', async (req, res) => {
       return res.status(400).json({ error: 'Valid lat and lng query params are required' });
     }
 
-    const capsules = memoryCapsules.filter((cap) => {
-      const [cLng, cLat] = cap.location.coordinates;
-      const dist = calculateDistanceMeters(lat, lng, cLat, cLng);
-      return dist <= maxDistance;
-    });
+    let capsules = [];
+    if (isMongoConnected && CapsuleModel) {
+      capsules = await CapsuleModel.find({
+        location: {
+          $near: {
+            $geometry: {
+              type: 'Point',
+              coordinates: [lng, lat],
+            },
+            $maxDistance: maxDistance,
+          },
+        },
+      })
+        .select('-audioData')
+        .lean();
+    } else {
+      capsules = memoryCapsules.filter((cap) => {
+        const [cLng, cLat] = cap.location.coordinates;
+        const dist = calculateDistanceMeters(lat, lng, cLat, cLng);
+        return dist <= maxDistance;
+      });
+    }
 
     const host = req.get('host');
     const protocol = req.protocol;
@@ -117,8 +163,8 @@ app.get('/api/capsules/nearby', async (req, res) => {
         createdAt: cap.createdAt,
         distanceMeters,
         isUnlocked,
-        audioUrl: isUnlocked && cap.audioBuffer ? `${baseUrl}/api/capsules/${cap._id}/audio` : null,
-        previewAvailable: isUnlocked && !!cap.audioBuffer,
+        audioUrl: isUnlocked ? `${baseUrl}/api/capsules/${cap._id}/audio` : null,
+        previewAvailable: isUnlocked,
       };
     });
 
@@ -136,44 +182,68 @@ app.get('/api/capsules/nearby', async (req, res) => {
 });
 
 // GET /api/capsules/:id/audio — stream audio with HTTP Range support for Android ExoPlayer & Web
-app.get('/api/capsules/:id/audio', (req, res) => {
-  const cap = memoryCapsules.find((c) => c._id === req.params.id);
-  if (!cap || !cap.audioBuffer) {
-    return res.status(404).json({ error: 'Audio not found' });
-  }
+app.get('/api/capsules/:id/audio', async (req, res) => {
+  try {
+    let buffer = null;
+    let contentType = 'audio/mp4';
 
-  const buffer = cap.audioBuffer;
-  const total = buffer.length;
-  const contentType = cap.audioMimeType || 'audio/mp4';
-  const range = req.headers.range;
-
-  if (range) {
-    const parts = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
-
-    if (isNaN(start) || start >= total || end >= total || start > end) {
-      return res.status(416).set('Content-Range', `bytes */${total}`).end();
+    if (isMongoConnected && CapsuleModel) {
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(404).json({ error: 'Audio not found' });
+      }
+      const cap = await CapsuleModel.findById(req.params.id)
+        .select('audioData audioMimeType')
+        .lean();
+      if (!cap || !cap.audioData) {
+        return res.status(404).json({ error: 'Audio not found' });
+      }
+      buffer = Buffer.isBuffer(cap.audioData)
+        ? cap.audioData
+        : Buffer.from(cap.audioData.buffer || cap.audioData);
+      contentType = cap.audioMimeType || 'audio/mp4';
+    } else {
+      const cap = memoryCapsules.find((c) => c._id === req.params.id);
+      if (!cap || !cap.audioBuffer) {
+        return res.status(404).json({ error: 'Audio not found' });
+      }
+      buffer = cap.audioBuffer;
+      contentType = cap.audioMimeType || 'audio/mp4';
     }
 
-    const chunkSize = end - start + 1;
-    res.status(206).set({
-      'Content-Range': `bytes ${start}-${end}/${total}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': chunkSize,
+    const total = buffer.length;
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
+
+      if (isNaN(start) || start >= total || end >= total || start > end) {
+        return res.status(416).set('Content-Range', `bytes */${total}`).end();
+      }
+
+      const chunkSize = end - start + 1;
+      res.status(206).set({
+        'Content-Range': `bytes ${start}-${end}/${total}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=86400',
+      });
+      return res.send(buffer.subarray(start, end + 1));
+    }
+
+    res.set({
       'Content-Type': contentType,
+      'Content-Length': total,
+      'Accept-Ranges': 'bytes',
       'Cache-Control': 'public, max-age=86400',
     });
-    return res.send(buffer.subarray(start, end + 1));
+    res.send(buffer);
+  } catch (err) {
+    console.error('Error streaming audio:', err);
+    res.status(500).json({ error: 'Failed to stream audio' });
   }
-
-  res.set({
-    'Content-Type': contentType,
-    'Content-Length': total,
-    'Accept-Ranges': 'bytes',
-    'Cache-Control': 'public, max-age=86400',
-  });
-  res.send(buffer);
 });
 
 // POST /api/capsules (Upload and Drop new capsule)
@@ -195,47 +265,69 @@ app.post('/api/capsules', upload.single('audio'), async (req, res) => {
     }
 
     const audioMimeType = resolveMimeType(req.file);
-    const capsuleId = 'cap-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    let savedId = null;
+    let savedCapsule = null;
 
-    const newCapsule = {
-      _id: capsuleId,
-      title: title.trim(),
-      author: (author || 'Anonymous Explorer').trim(),
-      category: category || 'Story',
-      duration: duration ? parseInt(duration, 10) : 15,
-      audioBuffer: req.file.buffer,
-      audioMimeType,
-      location: {
-        type: 'Point',
-        coordinates: [lng, lat],
-      },
-      unlockRadius: 30,
-      listens: 0,
-      likes: 0,
-      description: description || '',
-      createdAt: new Date(),
-    };
-
-    memoryCapsules.push(newCapsule);
+    if (isMongoConnected && CapsuleModel) {
+      const doc = new CapsuleModel({
+        title: title.trim(),
+        author: (author || 'Anonymous Explorer').trim(),
+        category: category || 'Story',
+        duration: duration ? parseInt(duration, 10) : 15,
+        audioData: req.file.buffer,
+        audioMimeType,
+        location: {
+          type: 'Point',
+          coordinates: [lng, lat],
+        },
+        unlockRadius: 30,
+        listens: 0,
+        likes: 0,
+        description: description || '',
+      });
+      savedCapsule = await doc.save();
+      savedId = savedCapsule._id.toString();
+    } else {
+      savedId = 'cap-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      savedCapsule = {
+        _id: savedId,
+        title: title.trim(),
+        author: (author || 'Anonymous Explorer').trim(),
+        category: category || 'Story',
+        duration: duration ? parseInt(duration, 10) : 15,
+        audioBuffer: req.file.buffer,
+        audioMimeType,
+        location: {
+          type: 'Point',
+          coordinates: [lng, lat],
+        },
+        unlockRadius: 30,
+        listens: 0,
+        likes: 0,
+        description: description || '',
+        createdAt: new Date(),
+      };
+      memoryCapsules.push(savedCapsule);
+    }
 
     console.log(
-      `[SoundCache] Dropped capsule "${newCapsule.title}" (${(req.file.size / 1024).toFixed(1)} KB, ${audioMimeType})`
+      `[SoundCache] Dropped capsule "${savedCapsule.title}" (${(req.file.size / 1024).toFixed(1)} KB, ${audioMimeType}) [${isMongoConnected ? 'MongoDB' : 'Memory'}]`
     );
 
     const host = req.get('host');
     const baseUrl = `${req.protocol}://${host}`;
 
     res.status(201).json({
-      _id: capsuleId,
-      title: newCapsule.title,
-      author: newCapsule.author,
-      category: newCapsule.category,
-      duration: newCapsule.duration,
-      unlockRadius: newCapsule.unlockRadius,
+      _id: savedId,
+      title: savedCapsule.title,
+      author: savedCapsule.author,
+      category: savedCapsule.category,
+      duration: savedCapsule.duration,
+      unlockRadius: savedCapsule.unlockRadius,
       listens: 0,
       likes: 0,
-      createdAt: newCapsule.createdAt,
-      audioUrl: `${baseUrl}/api/capsules/${capsuleId}/audio`,
+      createdAt: savedCapsule.createdAt,
+      audioUrl: `${baseUrl}/api/capsules/${savedId}/audio`,
       hasAudio: true,
     });
   } catch (err) {
@@ -246,32 +338,67 @@ app.post('/api/capsules', upload.single('audio'), async (req, res) => {
 
 // POST /api/capsules/:id/like
 app.post('/api/capsules/:id/like', async (req, res) => {
-  const cap = memoryCapsules.find((c) => c._id === req.params.id);
-  if (cap) {
-    cap.likes = (cap.likes || 0) + 1;
-    return res.json({ likes: cap.likes });
+  try {
+    if (isMongoConnected && CapsuleModel) {
+      const updated = await CapsuleModel.findByIdAndUpdate(
+        req.params.id,
+        { $inc: { likes: 1 } },
+        { new: true }
+      ).select('likes');
+      if (!updated) return res.status(404).json({ error: 'Capsule not found' });
+      return res.json({ likes: updated.likes });
+    }
+    const cap = memoryCapsules.find((c) => c._id === req.params.id);
+    if (cap) {
+      cap.likes = (cap.likes || 0) + 1;
+      return res.json({ likes: cap.likes });
+    }
+    return res.status(404).json({ error: 'Capsule not found' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update like' });
   }
-  return res.status(404).json({ error: 'Capsule not found' });
 });
 
 // POST /api/capsules/:id/listen
 app.post('/api/capsules/:id/listen', async (req, res) => {
-  const cap = memoryCapsules.find((c) => c._id === req.params.id);
-  if (cap) {
-    cap.listens = (cap.listens || 0) + 1;
-    return res.json({ listens: cap.listens });
+  try {
+    if (isMongoConnected && CapsuleModel) {
+      const updated = await CapsuleModel.findByIdAndUpdate(
+        req.params.id,
+        { $inc: { listens: 1 } },
+        { new: true }
+      ).select('listens');
+      if (!updated) return res.status(404).json({ error: 'Capsule not found' });
+      return res.json({ listens: updated.listens });
+    }
+    const cap = memoryCapsules.find((c) => c._id === req.params.id);
+    if (cap) {
+      cap.listens = (cap.listens || 0) + 1;
+      return res.json({ listens: cap.listens });
+    }
+    return res.status(404).json({ error: 'Capsule not found' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update listen count' });
   }
-  return res.status(404).json({ error: 'Capsule not found' });
 });
 
 // DELETE /api/capsules/:id
-app.delete('/api/capsules/:id', (req, res) => {
-  const idx = memoryCapsules.findIndex((c) => c._id === req.params.id);
-  if (idx === -1) {
-    return res.status(404).json({ error: 'Capsule not found' });
+app.delete('/api/capsules/:id', async (req, res) => {
+  try {
+    if (isMongoConnected && CapsuleModel) {
+      const deleted = await CapsuleModel.findByIdAndDelete(req.params.id);
+      if (!deleted) return res.status(404).json({ error: 'Capsule not found' });
+      return res.json({ message: 'Capsule deleted' });
+    }
+    const idx = memoryCapsules.findIndex((c) => c._id === req.params.id);
+    if (idx === -1) {
+      return res.status(404).json({ error: 'Capsule not found' });
+    }
+    memoryCapsules.splice(idx, 1);
+    res.json({ message: 'Capsule deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete capsule' });
   }
-  memoryCapsules.splice(idx, 1);
-  res.json({ message: 'Capsule deleted' });
 });
 
 if (require.main === module) {

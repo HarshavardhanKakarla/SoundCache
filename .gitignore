@@ -13,4 +13,7 @@ web-build/
 api/uploads/*
 !api/uploads/.gitkeep
 .env
+api/.env
+**/.env
+
 
