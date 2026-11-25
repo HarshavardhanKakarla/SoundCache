@@ -3,16 +3,8 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 function getDefaultApiUrl() {
-  // Automatically detect computer's LAN IP when running via Expo on a physical device
-  const hostUri = Constants.expoConfig?.hostUri;
-  if (hostUri) {
-    const ip = hostUri.split(':')[0];
-    return `http://${ip}:3000`;
-  }
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:3000';
-  }
-  return 'http://10.1.27.212:3000';
+  // Use live production cloud backend on Render by default
+  return 'https://soundcache.onrender.com';
 }
 
 let API_BASE_URL = getDefaultApiUrl();
