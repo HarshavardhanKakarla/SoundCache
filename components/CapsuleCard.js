@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../utils/constants';
 import { formatDistance } from '../utils/distance';
 
-export default function CapsuleCard({ capsule, onSelect, onWalkCloser }) {
+export default function CapsuleCard({ capsule, onSelect }) {
   const isUnlocked = capsule.isUnlocked;
 
   const getCategoryColor = (cat) => {
@@ -95,13 +95,10 @@ export default function CapsuleCard({ capsule, onSelect, onWalkCloser }) {
             <Ionicons name="play" size={12} color="#090D16" />
           </View>
         ) : (
-          <TouchableOpacity
-            style={styles.walkCloserAction}
-            onPress={() => onWalkCloser && onWalkCloser(capsule)}
-          >
-            <Ionicons name="footsteps-outline" size={12} color={COLORS.primary} />
-            <Text style={styles.walkCloserText}>Walk Closer</Text>
-          </TouchableOpacity>
+          <View style={styles.walkCloserAction}>
+            <Ionicons name="lock-closed-outline" size={12} color={COLORS.textMuted} />
+            <Text style={styles.walkCloserText}>Within 30m</Text>
+          </View>
         )}
       </View>
     </TouchableOpacity>

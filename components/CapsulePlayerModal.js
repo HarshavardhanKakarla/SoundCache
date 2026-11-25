@@ -22,6 +22,7 @@ export default function CapsulePlayerModal({ visible, capsule, onClose }) {
   const [durationMillis, setDurationMillis] = useState(1);
   const [likes, setLikes] = useState(0);
   const [hasLiked, setHasLiked] = useState(false);
+  const [playbackError, setPlaybackError] = useState(null);
 
   // Frequency wave animation bars
   const waveBars = useRef(
@@ -76,18 +77,24 @@ export default function CapsulePlayerModal({ visible, capsule, onClose }) {
   }, [isPlaying]);
 
   async function loadAndPlayAudio() {
-    if (!capsule || !capsule.audioUrl) return;
+    if (!capsule || !capsule.audioUrl) {
+      setPlaybackError('Audio stream unavailable for this capsule.');
+      return;
+    }
 
     try {
+      setPlaybackError(null);
       setIsLoading(true);
       await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
         staysActiveInBackground: false,
+        playThroughEarpieceAndroid: false,
       });
 
       const { sound: newSound } = await Audio.Sound.createAsync(
         { uri: capsule.audioUrl },
-        { shouldPlay: true },
+        { shouldPlay: true, volume: 1.0 },
         onPlaybackStatusUpdate
       );
 
@@ -95,7 +102,8 @@ export default function CapsulePlayerModal({ visible, capsule, onClose }) {
       setIsPlaying(true);
       setIsLoading(false);
     } catch (err) {
-      console.warn('Audio playback error (playing demo tone):', err?.message);
+      console.warn('Audio playback error:', err?.message);
+      setPlaybackError('Unable to play audio. Tap play to retry.');
       setIsLoading(false);
     }
   }
@@ -285,13 +293,21 @@ export default function CapsulePlayerModal({ visible, capsule, onClose }) {
           </View>
 
           {/* Location footnote */}
-          <View style={styles.geoFooter}>
-            <Ionicons name="location-sharp" size={13} color={COLORS.accent} />
-            <Text style={styles.geoFooterText}>
-              Decoded within 30m of GPS coordinates [{capsule.latitude?.toFixed(4)},{' '}
-              {capsule.longitude?.toFixed(4)}]
-            </Text>
-          </View>
+          {playbackError ? (
+            <View style={styles.geoFooter}>
+              <Ionicons name="alert-circle" size={13} color={COLORS.danger} />
+              <Text style={[styles.geoFooterText, { color: COLORS.danger }]}>
+                {playbackError}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.geoFooter}>
+              <Ionicons name="shield-checkmark" size={13} color={COLORS.accent} />
+              <Text style={styles.geoFooterText}>
+                Unlocked within 30m proximity zone
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     </Modal>

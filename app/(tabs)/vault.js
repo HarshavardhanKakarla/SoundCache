@@ -1,67 +1,76 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
-  Alert,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 
 import { COLORS } from '../../utils/constants';
-import { getApiBaseUrl, setCustomApiUrl } from '../../utils/api';
+import { fetchNearbyCapsules } from '../../utils/api';
 import CapsulePlayerModal from '../../components/CapsulePlayerModal';
 
 export default function VaultScreen() {
-  const [activeTab, setActiveTab] = useState('signals'); // 'signals' | 'config'
+  const [capsules, setCapsules] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeCapsule, setActiveCapsule] = useState(null);
-  const [apiUrl, setApiUrl] = useState(getApiBaseUrl());
 
-  const sampleVaultItems = [
-    {
-      _id: 'vault-1',
-      title: 'Whispering Willow Secret',
-      author: 'EchoSeeker',
-      category: 'Secret',
-      duration: 18,
-      audioUrl: `${getApiBaseUrl()}/uploads/demo-sound.mp3`,
-      isUnlocked: true,
-      likes: 19,
-      listens: 42,
-      decodedAt: 'Today, 4:15 PM',
-    },
-    {
-      _id: 'vault-2',
-      title: 'Late Night Synthesizer Vibe',
-      author: 'NeonBeat',
-      category: 'Music',
-      duration: 25,
-      audioUrl: `${getApiBaseUrl()}/uploads/demo-sound.mp3`,
-      isUnlocked: true,
-      likes: 34,
-      listens: 88,
-      decodedAt: 'Yesterday, 11:30 PM',
-    },
-  ];
+  const loadVault = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
 
-  function handleSaveApiUrl() {
-    if (apiUrl.trim()) {
-      setCustomApiUrl(apiUrl.trim());
-      Alert.alert('Updated', `API endpoint set to: ${apiUrl.trim()}`);
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const nearby = await fetchNearbyCapsules(loc.coords.latitude, loc.coords.longitude);
+      setCapsules(nearby);
+    } catch (err) {
+      console.warn('Vault fetch error:', err?.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    loadVault();
+  }, [loadVault]);
+
+  const unlockedCapsules = capsules.filter((c) => c.isUnlocked);
+  const totalListens = capsules.reduce((sum, c) => sum + (c.listens || 0), 0);
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              loadVault();
+            }}
+            tintColor={COLORS.primary}
+          />
+        }
+      >
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Frequency Vault</Text>
           <Text style={styles.headerSubtitle}>
-            Your collection of decoded sound capsules and drops.
+            Unlocked sound capsules within your 30m proximity zone.
           </Text>
         </View>
 
@@ -69,54 +78,36 @@ export default function VaultScreen() {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Ionicons name="radio" size={18} color={COLORS.primary} />
-            <Text style={styles.statValue}>12</Text>
-            <Text style={styles.statLabel}>Detected</Text>
+            <Text style={styles.statValue}>{capsules.length}</Text>
+            <Text style={styles.statLabel}>Nearby</Text>
           </View>
           <View style={styles.statCard}>
             <Ionicons name="lock-open" size={18} color={COLORS.accent} />
-            <Text style={styles.statValue}>5</Text>
+            <Text style={styles.statValue}>{unlockedCapsules.length}</Text>
             <Text style={styles.statLabel}>Unlocked</Text>
           </View>
           <View style={styles.statCard}>
-            <Ionicons name="mic-circle" size={18} color="#F472B6" />
-            <Text style={styles.statValue}>2</Text>
-            <Text style={styles.statLabel}>Dropped</Text>
+            <Ionicons name="headset" size={18} color="#F472B6" />
+            <Text style={styles.statValue}>{totalListens}</Text>
+            <Text style={styles.statLabel}>Listens</Text>
           </View>
         </View>
 
-        {/* Tab switch */}
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'signals' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('signals')}
-          >
-            <Text
-              style={[
-                styles.tabBtnText,
-                activeTab === 'signals' && styles.tabBtnTextActive,
-              ]}
-            >
-              Unlocked Archive
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'config' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('config')}
-          >
-            <Text
-              style={[
-                styles.tabBtnText,
-                activeTab === 'config' && styles.tabBtnTextActive,
-              ]}
-            >
-              API Settings
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.sectionTitle}>Unlocked Archive</Text>
 
-        {activeTab === 'signals' ? (
+        {loading && !refreshing ? (
+          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 32 }} />
+        ) : unlockedCapsules.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Ionicons name="archive-outline" size={44} color={COLORS.textDim} />
+            <Text style={styles.emptyTitle}>No Unlocked Capsules</Text>
+            <Text style={styles.emptyDesc}>
+              Walk within 30 meters of a SoundCache pin on the Radar or drop your own voice note to hear it here.
+            </Text>
+          </View>
+        ) : (
           <View style={styles.listSection}>
-            {sampleVaultItems.map((item) => (
+            {unlockedCapsules.map((item) => (
               <TouchableOpacity
                 key={item._id}
                 style={styles.vaultCard}
@@ -137,64 +128,25 @@ export default function VaultScreen() {
                 </View>
 
                 <View style={styles.vaultCardRight}>
-                  <Text style={styles.decodedTime}>{item.decodedAt}</Text>
+                  <Text style={styles.distanceTag}>{item.distanceMeters}m</Text>
                   <View style={styles.likesRow}>
                     <Ionicons name="heart" size={12} color={COLORS.danger} />
-                    <Text style={styles.likesCount}>{item.likes}</Text>
+                    <Text style={styles.likesCount}>{item.likes || 0}</Text>
                   </View>
                 </View>
               </TouchableOpacity>
             ))}
           </View>
-        ) : (
-          <View style={styles.configCard}>
-            <Text style={styles.configTitle}>Backend Connection</Text>
-            <Text style={styles.configDesc}>
-              Set the REST API endpoint URL used by this device to talk to the
-              SoundCache server.
-            </Text>
-
-            <Text style={styles.inputLabel}>Server Base URL</Text>
-            <TextInput
-              style={styles.urlInput}
-              value={apiUrl}
-              onChangeText={setApiUrl}
-              placeholder="http://localhost:3000"
-              placeholderTextColor={COLORS.textDim}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-
-            <View style={styles.presetRow}>
-              <TouchableOpacity
-                style={styles.presetBtn}
-                onPress={() => setApiUrl('http://localhost:3000')}
-              >
-                <Text style={styles.presetText}>Localhost</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.presetBtn}
-                onPress={() => setApiUrl('http://10.0.2.2:3000')}
-              >
-                <Text style={styles.presetText}>Android (10.0.2.2)</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={styles.saveConfigBtn}
-              onPress={handleSaveApiUrl}
-            >
-              <Text style={styles.saveConfigText}>Save Endpoint</Text>
-            </TouchableOpacity>
-          </View>
         )}
       </ScrollView>
 
-      {/* Player Modal */}
       <CapsulePlayerModal
         visible={!!activeCapsule}
         capsule={activeCapsule}
-        onClose={() => setActiveCapsule(null)}
+        onClose={() => {
+          setActiveCapsule(null);
+          loadVault();
+        }}
       />
     </SafeAreaView>
   );
@@ -246,30 +198,33 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textMuted,
   },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.card,
-    borderRadius: 10,
-    padding: 4,
-    marginBottom: 16,
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  tabBtnActive: {
-    backgroundColor: '#1E293B',
-  },
-  tabBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textMuted,
-  },
-  tabBtnTextActive: {
-    color: COLORS.primary,
+  sectionTitle: {
+    fontSize: 16,
     fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 12,
+  },
+  emptyBox: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  emptyDesc: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   listSection: {
     gap: 10,
@@ -313,9 +268,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     marginLeft: 8,
   },
-  decodedTime: {
-    fontSize: 10,
-    color: COLORS.textDim,
+  distanceTag: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.accent,
   },
   likesRow: {
     flexDirection: 'row',
@@ -327,68 +283,4 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textMuted,
   },
-  configCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  configTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  configDesc: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    lineHeight: 18,
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 6,
-  },
-  urlInput: {
-    backgroundColor: '#0c1220',
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: COLORS.text,
-    fontFamily: 'monospace',
-    marginBottom: 12,
-  },
-  presetRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  presetBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#1E293B',
-  },
-  presetText: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  saveConfigBtn: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  saveConfigText: {
-    color: '#090D16',
-    fontWeight: '700',
-    fontSize: 13,
-  },
 });
-

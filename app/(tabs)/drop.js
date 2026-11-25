@@ -36,6 +36,7 @@ export default function DropStudioScreen() {
   const [author, setAuthor] = useState('');
   const [category, setCategory] = useState('Story');
   const [location, setLocation] = useState(null);
+  const [gpsStatus, setGpsStatus] = useState('Acquiring GPS signal...');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const timerRef = useRef(null);
@@ -51,6 +52,7 @@ export default function DropStudioScreen() {
 
   async function fetchCurrentLocation() {
     try {
+      setGpsStatus('Acquiring GPS signal...');
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
         const loc = await Location.getCurrentPositionAsync({
@@ -60,11 +62,14 @@ export default function DropStudioScreen() {
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
         });
+        setGpsStatus('GPS Signal Locked • Ready to anchor');
       } else {
-        setLocation({ latitude: 17.3850, longitude: 78.4867 });
+        setLocation(null);
+        setGpsStatus('Location permission required to drop');
       }
     } catch (e) {
-      setLocation({ latitude: 17.3850, longitude: 78.4867 });
+      setLocation(null);
+      setGpsStatus('Unable to acquire GPS fix');
     }
   }
 
@@ -97,7 +102,6 @@ export default function DropStudioScreen() {
 
   async function startRecording() {
     try {
-      // Permission check
       const permission = await Audio.requestPermissionsAsync();
       if (permission.status !== 'granted') {
         Alert.alert('Permission Denied', 'Microphone access is required to record audio capsules.');
@@ -109,10 +113,10 @@ export default function DropStudioScreen() {
         playsInSilentModeIOS: true,
       });
 
-      // Clear previous recording preview
       if (previewSound) {
         await previewSound.unloadAsync();
         setPreviewSound(null);
+        setIsPreviewPlaying(false);
       }
       setRecordedUri(null);
       setRecordSeconds(0);
@@ -129,7 +133,6 @@ export default function DropStudioScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       } catch (e) {}
 
-      // Start timer
       timerRef.current = setInterval(() => {
         setRecordSeconds((prev) => {
           if (prev >= MAX_RECORD_SECONDS - 1) {
@@ -141,10 +144,11 @@ export default function DropStudioScreen() {
       }, 1000);
     } catch (err) {
       console.warn('Failed to start recording:', err);
-      Alert.alert('Recording Notice', 'Using simulated audio drop in dev environment.');
       setIsRecording(false);
-      setRecordedUri('simulated-recording.m4a');
-      setRecordSeconds(15);
+      Alert.alert(
+        'Recording Error',
+        'Could not start microphone recording. Please check microphone permissions and try again.'
+      );
     }
   }
 
@@ -157,6 +161,13 @@ export default function DropStudioScreen() {
       const uri = activeRec.getURI();
       setRecordedUri(uri);
       setRecording(null);
+
+      // Reset audio mode for loudspeaker playback
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        playThroughEarpieceAndroid: false,
+      });
 
       try {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -179,9 +190,14 @@ export default function DropStudioScreen() {
       }
     } else {
       try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          playThroughEarpieceAndroid: false,
+        });
         const { sound } = await Audio.Sound.createAsync(
           { uri: recordedUri },
-          { shouldPlay: true },
+          { shouldPlay: true, volume: 1.0 },
           (status) => {
             if (status.didJustFinish) {
               setIsPreviewPlaying(false);
@@ -192,6 +208,7 @@ export default function DropStudioScreen() {
         setIsPreviewPlaying(true);
       } catch (e) {
         console.warn('Preview error:', e);
+        Alert.alert('Preview Error', 'Could not play back the recorded audio.');
       }
     }
   }
@@ -201,22 +218,25 @@ export default function DropStudioScreen() {
       Alert.alert('Missing Title', 'Please give your audio capsule a title.');
       return;
     }
-    if (!recordedUri && recordSeconds === 0) {
+    if (!recordedUri) {
       Alert.alert('No Audio', 'Please record a voice note before dropping.');
+      return;
+    }
+    if (!location) {
+      Alert.alert('GPS Required', 'Waiting for your GPS location. Tap the refresh icon to retry.');
       return;
     }
 
     try {
       setIsSubmitting(true);
-      const coords = location || { latitude: 17.3850, longitude: 78.4867 };
 
       await dropCapsuleApi({
         title: title.trim(),
         author: author.trim() || 'Anonymous Explorer',
         category,
-        duration: recordSeconds || 15,
-        latitude: coords.latitude,
-        longitude: coords.longitude,
+        duration: recordSeconds || 1,
+        latitude: location.latitude,
+        longitude: location.longitude,
         audioUri: recordedUri,
       });
 
@@ -225,10 +245,8 @@ export default function DropStudioScreen() {
       } catch (e) {}
 
       Alert.alert(
-        'Capsule Dropped! 🚀',
-        `"${title}" has been anchored to coordinates [${coords.latitude.toFixed(
-          4
-        )}, ${coords.longitude.toFixed(4)}]. Nearby explorers can now discover it!`,
+        'Capsule Dropped!',
+        `"${title.trim()}" has been anchored to your current location. Nearby explorers within 30m can now discover and listen to it!`,
         [
           {
             text: 'View on Radar',
@@ -240,11 +258,16 @@ export default function DropStudioScreen() {
       // Reset form
       setTitle('');
       setAuthor('');
+      if (previewSound) {
+        await previewSound.unloadAsync();
+        setPreviewSound(null);
+      }
+      setIsPreviewPlaying(false);
       setRecordedUri(null);
       setRecordSeconds(0);
     } catch (err) {
       console.error('Drop capsule error:', err);
-      Alert.alert('Upload Failed', 'Could not anchor capsule. Check server connection.');
+      Alert.alert('Upload Failed', 'Could not anchor capsule. Please check your internet connection and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -257,16 +280,19 @@ export default function DropStudioScreen() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Audio Drop Studio</Text>
           <Text style={styles.headerSubtitle}>
-            Anchor your voice to your exact physical coordinates.
+            Anchor your voice to your current physical location.
           </Text>
         </View>
 
-        {/* GPS Pinned Location Pill */}
+        {/* GPS Status Banner (no raw coordinates exposed) */}
         <View style={styles.gpsBanner}>
-          <Ionicons name="location" size={16} color={COLORS.accent} />
-          <Text style={styles.gpsText}>
-            PINNED: [{location?.latitude?.toFixed(4) || '17.3850'},{' '}
-            {location?.longitude?.toFixed(4) || '78.4867'}]
+          <Ionicons
+            name={location ? 'location' : 'locate-outline'}
+            size={16}
+            color={location ? COLORS.accent : COLORS.danger}
+          />
+          <Text style={[styles.gpsText, !location && { color: COLORS.danger }]}>
+            {gpsStatus}
           </Text>
           <TouchableOpacity onPress={fetchCurrentLocation}>
             <Ionicons name="refresh" size={15} color={COLORS.primary} />
@@ -280,7 +306,6 @@ export default function DropStudioScreen() {
           </Text>
           <Text style={styles.timerLimitText}>Max {MAX_RECORD_SECONDS}s spatial snippet</Text>
 
-          {/* Record Button */}
           <TouchableOpacity
             activeOpacity={0.8}
             onPress={isRecording ? () => stopRecording() : startRecording}
@@ -315,7 +340,6 @@ export default function DropStudioScreen() {
               : 'Tap microphone to start recording'}
           </Text>
 
-          {/* Audio Preview playback button */}
           {recordedUri && (
             <TouchableOpacity style={styles.previewBtn} onPress={togglePreview}>
               <Ionicons
@@ -384,11 +408,10 @@ export default function DropStudioScreen() {
             })}
           </View>
 
-          {/* Submit Button */}
           <TouchableOpacity
             style={[
               styles.submitBtn,
-              (!recordedUri && recordSeconds === 0) && styles.submitBtnDisabled,
+              (!recordedUri || !location) && styles.submitBtnDisabled,
             ]}
             onPress={handleDropCapsule}
             disabled={isSubmitting}
@@ -445,7 +468,6 @@ const styles = StyleSheet.create({
   gpsText: {
     flex: 1,
     fontSize: 12,
-    fontFamily: 'monospace',
     color: COLORS.accent,
     fontWeight: '600',
   },
@@ -578,4 +600,3 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 });
-

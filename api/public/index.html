@@ -946,11 +946,11 @@
             <button class="btn-step" onclick="stepOffset(-0.00012, 0)">
               <i class="fa-solid fa-arrow-down"></i> South (-15m)
             </button>
-            <button class="btn-step highlight" onclick="jumpToNearestTarget()">
-              <i class="fa-solid fa-bolt"></i> Jump to Lock
+            <button class="btn-step" onclick="stepOffset(0, 0.00012)">
+              <i class="fa-solid fa-arrow-right"></i> East (+15m)
             </button>
-            <button class="btn-step" onclick="seedSamplePins()">
-              <i class="fa-solid fa-wand-magic-sparkles"></i> Seed Pins
+            <button class="btn-step" onclick="recenterToRealGps()">
+              <i class="fa-solid fa-crosshairs"></i> Sync GPS
             </button>
           </div>
         </div>
@@ -1298,8 +1298,7 @@
         feed.innerHTML = `
           <div style="text-align: center; padding: 48px 16px; color: var(--text-muted);">
             <i class="fa-solid fa-satellite" style="font-size: 28px; margin-bottom: 12px; color: var(--text-muted);"></i>
-            <p>No audio capsules found in this sector.</p>
-            <button class="btn-step" onclick="seedSamplePins()" style="margin: 14px auto 0;">Seed 5 Capsules Near You</button>
+            <p>No audio capsules found in this sector yet. Record one to drop the first!</p>
           </div>
         `;
         return;
@@ -1345,9 +1344,7 @@
                 ? `<button class="action-btn btn-play-trigger" onclick='launchDockPlayer(${JSON.stringify(cap).replace(/'/g, "&#39;")})'>
                      <i class="fa-solid fa-play"></i> Listen
                    </button>`
-                : `<button class="action-btn btn-step-toward" onclick="walkDirectlyTo(${cap.latitude}, ${cap.longitude})">
-                     <i class="fa-solid fa-person-walking"></i> Step Closer
-                   </button>`
+                : `<span class="proximity-badge locked">Walk within 30m</span>`
               }
             </div>
           </div>

@@ -1,45 +1,23 @@
 import axios from 'axios';
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
 
-function getDefaultApiUrl() {
-  // Use live production cloud backend on Render by default
-  return 'https://soundcache.onrender.com';
-}
-
-let API_BASE_URL = getDefaultApiUrl();
-
-export function setCustomApiUrl(url) {
-  if (url && url.trim()) {
-    API_BASE_URL = url.trim();
-  }
-}
-
-export function getApiBaseUrl() {
-  return API_BASE_URL;
-}
+const API_BASE_URL = 'https://soundcache.onrender.com';
 
 const client = axios.create({
-  timeout: 8000,
+  timeout: 15000,
 });
 
 /**
  * Fetch nearby capsules based on user's current GPS location
  */
 export async function fetchNearbyCapsules(latitude, longitude, maxDistance = 5000) {
-  try {
-    const res = await client.get(`${API_BASE_URL}/api/capsules/nearby`, {
-      params: { lat: latitude, lng: longitude, maxDistance },
-    });
-    return res.data.capsules || [];
-  } catch (error) {
-    console.warn('Network call failed, returning empty or fallback:', error?.message);
-    throw error;
-  }
+  const res = await client.get(`${API_BASE_URL}/api/capsules/nearby`, {
+    params: { lat: latitude, lng: longitude, maxDistance },
+  });
+  return res.data.capsules || [];
 }
 
 /**
- * Upload and drop a new audio capsule
+ * Upload and drop a new audio capsule with real audio file
  */
 export async function dropCapsuleApi({
   title,
@@ -50,6 +28,10 @@ export async function dropCapsuleApi({
   longitude,
   audioUri,
 }) {
+  if (!audioUri) {
+    throw new Error('Audio recording is required');
+  }
+
   const formData = new FormData();
   formData.append('title', title);
   formData.append('author', author || 'Anonymous Explorer');
@@ -58,19 +40,21 @@ export async function dropCapsuleApi({
   formData.append('latitude', String(latitude));
   formData.append('longitude', String(longitude));
 
-  if (audioUri) {
-    const filename = audioUri.split('/').pop() || 'recording.m4a';
-    formData.append('audio', {
-      uri: audioUri,
-      name: filename,
-      type: 'audio/m4a',
-    });
-  }
+  const filename = audioUri.split('/').pop() || 'recording.m4a';
+  const ext = filename.split('.').pop()?.toLowerCase();
+  const mimeType = ext === 'mp3' ? 'audio/mpeg' : ext === 'wav' ? 'audio/wav' : 'audio/mp4';
+
+  formData.append('audio', {
+    uri: audioUri,
+    name: filename,
+    type: mimeType,
+  });
 
   const res = await axios.post(`${API_BASE_URL}/api/capsules`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
+    timeout: 30000,
   });
 
   return res.data;
@@ -99,15 +83,3 @@ export async function recordListenApi(capsuleId) {
     console.warn('Record listen failed:', err.message);
   }
 }
-
-/**
- * Seed sample capsules around coordinates
- */
-export async function seedCapsulesApi(latitude, longitude) {
-  const res = await client.post(`${API_BASE_URL}/api/capsules/seed`, {
-    latitude,
-    longitude,
-  });
-  return res.data;
-}
-
