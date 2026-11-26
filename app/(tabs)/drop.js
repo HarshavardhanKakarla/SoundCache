@@ -263,7 +263,12 @@ export default function DropStudioScreen() {
       setRecordedUri(null);
       setRecordSeconds(0);
     } catch (err) {
-      Alert.alert('Upload Failed', 'Could not anchor capsule. Please check your internet connection and try again.');
+      const serverMsg = err?.response?.data?.error;
+      if (err?.response?.status === 409 && serverMsg) {
+        Alert.alert('Spot Full', serverMsg);
+      } else {
+        Alert.alert('Upload Failed', serverMsg || 'Could not anchor capsule. Please check your internet connection and try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }

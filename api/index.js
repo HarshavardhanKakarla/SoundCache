@@ -380,6 +380,37 @@ app.post('/api/capsules', upload.single('audio'), async (req, res) => {
       return res.status(400).json({ error: 'Audio recording file is required' });
     }
 
+    // Prevent spot spam: allow at most 3 capsules within a 5m radius
+    const SPOT_RADIUS_METERS = 5;
+    const MAX_CAPSULES_PER_SPOT = 3;
+    let nearbySpotCount = 0;
+
+    if (isMongoConnected && CapsuleModel) {
+      const nearbyDocs = await CapsuleModel.find({
+        location: {
+          $near: {
+            $geometry: { type: 'Point', coordinates: [lng, lat] },
+            $maxDistance: SPOT_RADIUS_METERS,
+          },
+        },
+      })
+        .limit(MAX_CAPSULES_PER_SPOT)
+        .select('_id')
+        .lean();
+      nearbySpotCount = nearbyDocs.length;
+    } else {
+      nearbySpotCount = memoryCapsules.filter((cap) => {
+        const [cLng, cLat] = cap.location.coordinates;
+        return calculateDistanceMeters(lat, lng, cLat, cLng) <= SPOT_RADIUS_METERS;
+      }).length;
+    }
+
+    if (nearbySpotCount >= MAX_CAPSULES_PER_SPOT) {
+      return res.status(409).json({
+        error: `This spot already has ${MAX_CAPSULES_PER_SPOT} capsules within ${SPOT_RADIUS_METERS}m. Walk a few steps away or leave a 10s Whisper reply on an existing capsule!`,
+      });
+    }
+
     const audioMimeType = resolveMimeType(req.file);
     let savedId = null;
     let savedCapsule = null;
