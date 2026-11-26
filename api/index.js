@@ -9,15 +9,12 @@ const mongoose = require('mongoose');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Trust reverse proxy (Render) so req.protocol is 'https'
 app.set('trust proxy', 1);
 
-// Enable CORS and JSON parsing
 app.use(cors());
 app.use(express.json({ limit: '30mb' }));
 app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 
-// Serve web UI dashboard
 const publicDir = path.join(__dirname, 'public');
 if (!fs.existsSync(publicDir)) {
   fs.mkdirSync(publicDir, { recursive: true });
@@ -27,15 +24,13 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
-// Multer setup — store in memory buffer so audio can be persisted to MongoDB
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB max (within MongoDB 16MB doc limit)
+  limits: { fileSize: 15 * 1024 * 1024 },
 });
 
-// Haversine distance calculation in meters between two lat/lng points
 function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
-  const R = 6371e3; // Earth radius in meters
+  const R = 6371e3;
   const phi1 = (lat1 * Math.PI) / 180;
   const phi2 = (lat2 * Math.PI) / 180;
   const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
@@ -64,6 +59,39 @@ function resolveMimeType(file) {
   return 'audio/mp4';
 }
 
+function streamAudioBuffer(req, res, buffer, contentType) {
+  const total = buffer.length;
+  const range = req.headers.range;
+
+  if (range) {
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
+
+    if (isNaN(start) || start >= total || end >= total || start > end) {
+      return res.status(416).set('Content-Range', `bytes */${total}`).end();
+    }
+
+    const chunkSize = end - start + 1;
+    res.status(206).set({
+      'Content-Range': `bytes ${start}-${end}/${total}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunkSize,
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=86400',
+    });
+    return res.send(buffer.subarray(start, end + 1));
+  }
+
+  res.set({
+    'Content-Type': contentType,
+    'Content-Length': total,
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'public, max-age=86400',
+  });
+  res.send(buffer);
+}
+
 // --------------- DATABASE CONNECTION --------------- //
 let isMongoConnected = false;
 let CapsuleModel = null;
@@ -89,7 +117,6 @@ if (MONGODB_URI) {
 
 // ---------------- ROUTES ---------------- //
 
-// Health check
 app.get('/api/health', async (req, res) => {
   let capsuleCount = memoryCapsules.length;
   if (isMongoConnected && CapsuleModel) {
@@ -130,7 +157,7 @@ app.get('/api/capsules/nearby', async (req, res) => {
           },
         },
       })
-        .select('-audioData')
+        .select('-audioData -replies.audioData')
         .lean();
     } else {
       capsules = memoryCapsules.filter((cap) => {
@@ -141,15 +168,24 @@ app.get('/api/capsules/nearby', async (req, res) => {
     }
 
     const host = req.get('host');
-    const protocol = req.protocol;
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = `${req.protocol}://${host}`;
 
     const enrichedCapsules = capsules.map((cap) => {
       const [cLng, cLat] = cap.location.coordinates;
       const distanceMeters = calculateDistanceMeters(lat, lng, cLat, cLng);
       const isUnlocked = distanceMeters <= (cap.unlockRadius || 30);
+      const rawReplies = cap.replies || [];
 
-      // Protect locked capsules: do NOT expose audioUrl or exact coordinates
+      const replies = isUnlocked
+        ? rawReplies.map((r) => ({
+            _id: r._id,
+            author: r.author || 'Anonymous Explorer',
+            duration: r.duration || 10,
+            createdAt: r.createdAt,
+            audioUrl: `${baseUrl}/api/capsules/${cap._id}/replies/${r._id}/audio`,
+          }))
+        : [];
+
       return {
         _id: cap._id,
         title: cap.title,
@@ -160,6 +196,8 @@ app.get('/api/capsules/nearby', async (req, res) => {
         unlockRadius: cap.unlockRadius,
         listens: cap.listens,
         likes: cap.likes,
+        replyCount: rawReplies.length,
+        replies,
         createdAt: cap.createdAt,
         distanceMeters,
         isUnlocked,
@@ -181,7 +219,7 @@ app.get('/api/capsules/nearby', async (req, res) => {
   }
 });
 
-// GET /api/capsules/:id/audio — stream audio with HTTP Range support for Android ExoPlayer & Web
+// GET /api/capsules/:id/audio
 app.get('/api/capsules/:id/audio', async (req, res) => {
   try {
     let buffer = null;
@@ -210,39 +248,117 @@ app.get('/api/capsules/:id/audio', async (req, res) => {
       contentType = cap.audioMimeType || 'audio/mp4';
     }
 
-    const total = buffer.length;
-    const range = req.headers.range;
-
-    if (range) {
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : total - 1;
-
-      if (isNaN(start) || start >= total || end >= total || start > end) {
-        return res.status(416).set('Content-Range', `bytes */${total}`).end();
-      }
-
-      const chunkSize = end - start + 1;
-      res.status(206).set({
-        'Content-Range': `bytes ${start}-${end}/${total}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunkSize,
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=86400',
-      });
-      return res.send(buffer.subarray(start, end + 1));
-    }
-
-    res.set({
-      'Content-Type': contentType,
-      'Content-Length': total,
-      'Accept-Ranges': 'bytes',
-      'Cache-Control': 'public, max-age=86400',
-    });
-    res.send(buffer);
+    return streamAudioBuffer(req, res, buffer, contentType);
   } catch (err) {
     console.error('Error streaming audio:', err);
     res.status(500).json({ error: 'Failed to stream audio' });
+  }
+});
+
+// GET /api/capsules/:id/replies/:replyId/audio — stream guestbook reply audio
+app.get('/api/capsules/:id/replies/:replyId/audio', async (req, res) => {
+  try {
+    let buffer = null;
+    let contentType = 'audio/mp4';
+
+    if (isMongoConnected && CapsuleModel) {
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(404).json({ error: 'Reply audio not found' });
+      }
+      const cap = await CapsuleModel.findById(req.params.id)
+        .select('replies')
+        .lean();
+      const reply = cap?.replies?.find((r) => String(r._id) === req.params.replyId);
+      if (!reply || !reply.audioData) {
+        return res.status(404).json({ error: 'Reply audio not found' });
+      }
+      buffer = Buffer.isBuffer(reply.audioData)
+        ? reply.audioData
+        : Buffer.from(reply.audioData.buffer || reply.audioData);
+      contentType = reply.audioMimeType || 'audio/mp4';
+    } else {
+      const cap = memoryCapsules.find((c) => c._id === req.params.id);
+      const reply = cap?.replies?.find((r) => r._id === req.params.replyId);
+      if (!reply || !reply.audioBuffer) {
+        return res.status(404).json({ error: 'Reply audio not found' });
+      }
+      buffer = reply.audioBuffer;
+      contentType = reply.audioMimeType || 'audio/mp4';
+    }
+
+    return streamAudioBuffer(req, res, buffer, contentType);
+  } catch (err) {
+    console.error('Error streaming reply audio:', err);
+    res.status(500).json({ error: 'Failed to stream reply audio' });
+  }
+});
+
+// POST /api/capsules/:id/replies — append a 10s Whisper Chain voice reply
+app.post('/api/capsules/:id/replies', upload.single('audio'), async (req, res) => {
+  try {
+    const { author, duration } = req.body;
+
+    if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
+      return res.status(400).json({ error: 'Voice reply audio file is required' });
+    }
+
+    const audioMimeType = resolveMimeType(req.file);
+    const parsedDuration = Math.min(10, Math.max(1, parseInt(duration, 10) || 10));
+    const host = req.get('host');
+    const baseUrl = `${req.protocol}://${host}`;
+
+    if (isMongoConnected && CapsuleModel) {
+      if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        return res.status(404).json({ error: 'Capsule not found' });
+      }
+      const cap = await CapsuleModel.findById(req.params.id);
+      if (!cap) return res.status(404).json({ error: 'Capsule not found' });
+
+      const newReply = {
+        author: (author || 'Anonymous Explorer').trim(),
+        audioData: req.file.buffer,
+        audioMimeType,
+        duration: parsedDuration,
+        createdAt: new Date(),
+      };
+      cap.replies.push(newReply);
+      await cap.save();
+
+      const savedReply = cap.replies[cap.replies.length - 1];
+      return res.status(201).json({
+        _id: savedReply._id,
+        author: savedReply.author,
+        duration: savedReply.duration,
+        createdAt: savedReply.createdAt,
+        audioUrl: `${baseUrl}/api/capsules/${cap._id}/replies/${savedReply._id}/audio`,
+      });
+    } else {
+      const cap = memoryCapsules.find((c) => c._id === req.params.id);
+      if (!cap) return res.status(404).json({ error: 'Capsule not found' });
+
+      const replyId = 'rep-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+      const newReply = {
+        _id: replyId,
+        author: (author || 'Anonymous Explorer').trim(),
+        audioBuffer: req.file.buffer,
+        audioMimeType,
+        duration: parsedDuration,
+        createdAt: new Date(),
+      };
+      cap.replies = cap.replies || [];
+      cap.replies.push(newReply);
+
+      return res.status(201).json({
+        _id: replyId,
+        author: newReply.author,
+        duration: newReply.duration,
+        createdAt: newReply.createdAt,
+        audioUrl: `${baseUrl}/api/capsules/${cap._id}/replies/${replyId}/audio`,
+      });
+    }
+  } catch (err) {
+    console.error('Error adding voice reply:', err);
+    res.status(500).json({ error: 'Failed to save voice reply' });
   }
 });
 
@@ -284,6 +400,7 @@ app.post('/api/capsules', upload.single('audio'), async (req, res) => {
         listens: 0,
         likes: 0,
         description: description || '',
+        replies: [],
       });
       savedCapsule = await doc.save();
       savedId = savedCapsule._id.toString();
@@ -305,14 +422,11 @@ app.post('/api/capsules', upload.single('audio'), async (req, res) => {
         listens: 0,
         likes: 0,
         description: description || '',
+        replies: [],
         createdAt: new Date(),
       };
       memoryCapsules.push(savedCapsule);
     }
-
-    console.log(
-      `[SoundCache] Dropped capsule "${savedCapsule.title}" (${(req.file.size / 1024).toFixed(1)} KB, ${audioMimeType}) [${isMongoConnected ? 'MongoDB' : 'Memory'}]`
-    );
 
     const host = req.get('host');
     const baseUrl = `${req.protocol}://${host}`;
@@ -326,6 +440,8 @@ app.post('/api/capsules', upload.single('audio'), async (req, res) => {
       unlockRadius: savedCapsule.unlockRadius,
       listens: 0,
       likes: 0,
+      replyCount: 0,
+      replies: [],
       createdAt: savedCapsule.createdAt,
       audioUrl: `${baseUrl}/api/capsules/${savedId}/audio`,
       hasAudio: true,

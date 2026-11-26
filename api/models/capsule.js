@@ -1,5 +1,29 @@
 const mongoose = require('mongoose');
 
+const replySchema = new mongoose.Schema({
+  author: {
+    type: String,
+    default: 'Anonymous Explorer',
+    trim: true,
+  },
+  audioData: {
+    type: Buffer,
+    required: true,
+  },
+  audioMimeType: {
+    type: String,
+    default: 'audio/mp4',
+  },
+  duration: {
+    type: Number,
+    default: 10,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
 const capsuleSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -56,6 +80,10 @@ const capsuleSchema = new mongoose.Schema({
   description: {
     type: String,
     default: '',
+  },
+  replies: {
+    type: [replySchema],
+    default: [],
   },
   createdAt: {
     type: Date,

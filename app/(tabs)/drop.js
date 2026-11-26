@@ -17,12 +17,14 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 
-import { COLORS, CATEGORIES } from '../../utils/constants';
+import { CATEGORIES } from '../../utils/constants';
+import { useTheme } from '../../utils/theme';
 import { dropCapsuleApi } from '../../utils/api';
 
 const MAX_RECORD_SECONDS = 30;
 
 export default function DropStudioScreen() {
+  const { theme } = useTheme();
   const router = useRouter();
   const [recording, setRecording] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -31,7 +33,6 @@ export default function DropStudioScreen() {
   const [previewSound, setPreviewSound] = useState(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
 
-  // Form states
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [category, setCategory] = useState('Story');
@@ -73,14 +74,13 @@ export default function DropStudioScreen() {
     }
   }
 
-  // Pulsing animation while mic is live
   useEffect(() => {
     let anim;
     if (isRecording) {
       anim = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
-            toValue: 1.25,
+            toValue: 1.22,
             duration: 500,
             useNativeDriver: true,
           }),
@@ -162,7 +162,6 @@ export default function DropStudioScreen() {
       setRecordedUri(uri);
       setRecording(null);
 
-      // Reset audio mode for loudspeaker playback
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
@@ -207,7 +206,6 @@ export default function DropStudioScreen() {
         setPreviewSound(sound);
         setIsPreviewPlaying(true);
       } catch (e) {
-        console.warn('Preview error:', e);
         Alert.alert('Preview Error', 'Could not play back the recorded audio.');
       }
     }
@@ -255,7 +253,6 @@ export default function DropStudioScreen() {
         ]
       );
 
-      // Reset form
       setTitle('');
       setAuthor('');
       if (previewSound) {
@@ -266,7 +263,6 @@ export default function DropStudioScreen() {
       setRecordedUri(null);
       setRecordSeconds(0);
     } catch (err) {
-      console.error('Drop capsule error:', err);
       Alert.alert('Upload Failed', 'Could not anchor capsule. Please check your internet connection and try again.');
     } finally {
       setIsSubmitting(false);
@@ -274,37 +270,56 @@ export default function DropStudioScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Audio Drop Studio</Text>
-          <Text style={styles.headerSubtitle}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>
+            Audio Drop Studio
+          </Text>
+          <Text style={[styles.headerSubtitle, { color: theme.textMuted }]}>
             Anchor your voice to your current physical location.
           </Text>
         </View>
 
-        {/* GPS Status Banner (no raw coordinates exposed) */}
-        <View style={styles.gpsBanner}>
+        <View
+          style={[
+            styles.gpsBanner,
+            {
+              backgroundColor: location ? theme.accentSoft : theme.dangerSoft,
+              borderColor: location ? theme.accent : theme.danger,
+            },
+          ]}
+        >
           <Ionicons
             name={location ? 'location' : 'locate-outline'}
             size={16}
-            color={location ? COLORS.accent : COLORS.danger}
+            color={location ? theme.accent : theme.danger}
           />
-          <Text style={[styles.gpsText, !location && { color: COLORS.danger }]}>
+          <Text
+            style={[
+              styles.gpsText,
+              { color: location ? theme.accent : theme.danger },
+            ]}
+          >
             {gpsStatus}
           </Text>
           <TouchableOpacity onPress={fetchCurrentLocation}>
-            <Ionicons name="refresh" size={15} color={COLORS.primary} />
+            <Ionicons name="refresh" size={15} color={theme.primary} />
           </TouchableOpacity>
         </View>
 
-        {/* Voice Recorder Section */}
-        <View style={styles.recorderCard}>
-          <Text style={styles.timerText}>
+        <View
+          style={[
+            styles.recorderCard,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
+          <Text style={[styles.timerText, { color: theme.text }]}>
             00:{recordSeconds < 10 ? `0${recordSeconds}` : recordSeconds}
           </Text>
-          <Text style={styles.timerLimitText}>Max {MAX_RECORD_SECONDS}s spatial snippet</Text>
+          <Text style={[styles.timerLimitText, { color: theme.textDim }]}>
+            Max {MAX_RECORD_SECONDS}s spatial snippet
+          </Text>
 
           <TouchableOpacity
             activeOpacity={0.8}
@@ -314,25 +329,25 @@ export default function DropStudioScreen() {
             <Animated.View
               style={[
                 styles.micPulseRing,
+                { borderColor: isRecording ? theme.danger : theme.primary },
                 isRecording && { transform: [{ scale: pulseAnim }] },
-                isRecording && { borderColor: COLORS.danger },
               ]}
             />
             <View
               style={[
                 styles.micButton,
-                isRecording && { backgroundColor: COLORS.danger },
+                { backgroundColor: isRecording ? theme.danger : theme.primary },
               ]}
             >
               <Ionicons
                 name={isRecording ? 'stop' : 'mic'}
-                size={34}
-                color={isRecording ? '#FFFFFF' : '#090D16'}
+                size={32}
+                color={theme.primaryText}
               />
             </View>
           </TouchableOpacity>
 
-          <Text style={styles.recInstruction}>
+          <Text style={[styles.recInstruction, { color: theme.textMuted }]}>
             {isRecording
               ? 'Recording live audio... Tap to stop'
               : recordedUri
@@ -341,40 +356,63 @@ export default function DropStudioScreen() {
           </Text>
 
           {recordedUri && (
-            <TouchableOpacity style={styles.previewBtn} onPress={togglePreview}>
+            <TouchableOpacity
+              style={[
+                styles.previewBtn,
+                { backgroundColor: theme.primarySoft, borderColor: theme.primary },
+              ]}
+              onPress={togglePreview}
+            >
               <Ionicons
                 name={isPreviewPlaying ? 'pause' : 'play'}
                 size={16}
-                color={COLORS.primary}
+                color={theme.primary}
               />
-              <Text style={styles.previewBtnText}>
+              <Text style={[styles.previewBtnText, { color: theme.primary }]}>
                 {isPreviewPlaying ? 'Pause Snippet' : 'Preview Recording'}
               </Text>
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Capsule Form Inputs */}
         <View style={styles.formSection}>
-          <Text style={styles.inputLabel}>Capsule Title</Text>
+          <Text style={[styles.inputLabel, { color: theme.text }]}>Capsule Title</Text>
           <TextInput
-            style={styles.textInput}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+                color: theme.text,
+              },
+            ]}
             placeholder="e.g. Secret Rooftop Frequency #3"
-            placeholderTextColor={COLORS.textDim}
+            placeholderTextColor={theme.textDim}
             value={title}
             onChangeText={setTitle}
           />
 
-          <Text style={styles.inputLabel}>Author / Handle (Optional)</Text>
+          <Text style={[styles.inputLabel, { color: theme.text }]}>
+            Author / Handle (Optional)
+          </Text>
           <TextInput
-            style={styles.textInput}
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+                color: theme.text,
+              },
+            ]}
             placeholder="Anonymous Explorer"
-            placeholderTextColor={COLORS.textDim}
+            placeholderTextColor={theme.textDim}
             value={author}
             onChangeText={setAuthor}
           />
 
-          <Text style={styles.inputLabel}>Frequency Category</Text>
+          <Text style={[styles.inputLabel, { color: theme.text }]}>
+            Frequency Category
+          </Text>
           <View style={styles.categoryGrid}>
             {CATEGORIES.filter((c) => c.id !== 'All').map((cat) => {
               const isSelected = category === cat.id;
@@ -383,9 +421,9 @@ export default function DropStudioScreen() {
                   key={cat.id}
                   style={[
                     styles.catOption,
-                    isSelected && {
-                      backgroundColor: 'rgba(0, 242, 254, 0.15)',
-                      borderColor: COLORS.primary,
+                    {
+                      backgroundColor: isSelected ? theme.primarySoft : theme.surface,
+                      borderColor: isSelected ? theme.primary : theme.border,
                     },
                   ]}
                   onPress={() => setCategory(cat.id)}
@@ -393,12 +431,13 @@ export default function DropStudioScreen() {
                   <Ionicons
                     name={cat.icon}
                     size={16}
-                    color={isSelected ? COLORS.primary : COLORS.textMuted}
+                    color={isSelected ? theme.primary : theme.textMuted}
                   />
                   <Text
                     style={[
                       styles.catOptionText,
-                      isSelected && { color: COLORS.primary, fontWeight: '700' },
+                      { color: isSelected ? theme.primary : theme.textMuted },
+                      isSelected && { fontWeight: '700' },
                     ]}
                   >
                     {cat.label}
@@ -411,17 +450,20 @@ export default function DropStudioScreen() {
           <TouchableOpacity
             style={[
               styles.submitBtn,
+              { backgroundColor: theme.accent },
               (!recordedUri || !location) && styles.submitBtnDisabled,
             ]}
             onPress={handleDropCapsule}
             disabled={isSubmitting}
           >
             {isSubmitting ? (
-              <ActivityIndicator color="#090D16" />
+              <ActivityIndicator color={theme.primaryText} />
             ) : (
               <>
-                <Ionicons name="cloud-upload" size={18} color="#090D16" />
-                <Text style={styles.submitBtnText}>Drop Audio Capsule</Text>
+                <Ionicons name="cloud-upload" size={18} color={theme.primaryText} />
+                <Text style={[styles.submitBtnText, { color: theme.primaryText }]}>
+                  Drop Audio Capsule
+                </Text>
               </>
             )}
           </TouchableOpacity>
@@ -434,7 +476,6 @@ export default function DropStudioScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: COLORS.background,
   },
   scrollContent: {
     paddingHorizontal: 16,
@@ -446,49 +487,40 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 22,
     fontWeight: '900',
-    color: COLORS.text,
   },
   headerSubtitle: {
     fontSize: 13,
-    color: COLORS.textMuted,
     marginTop: 4,
   },
   gpsBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 245, 160, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(0, 245, 160, 0.25)',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 10,
     gap: 8,
     marginBottom: 16,
   },
   gpsText: {
     flex: 1,
     fontSize: 12,
-    color: COLORS.accent,
     fontWeight: '600',
   },
   recorderCard: {
-    backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
     marginBottom: 20,
   },
   timerText: {
     fontSize: 36,
     fontWeight: '900',
-    color: COLORS.text,
     letterSpacing: 1,
   },
   timerLimitText: {
     fontSize: 11,
-    color: COLORS.textDim,
     marginBottom: 16,
   },
   micButtonWrapper: {
@@ -505,20 +537,17 @@ const styles = StyleSheet.create({
     height: 94,
     borderRadius: 47,
     borderWidth: 2,
-    borderColor: COLORS.primary,
   },
   micButton: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: COLORS.primary,
+    width: 74,
+    height: 74,
+    borderRadius: 37,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 8,
+    elevation: 4,
   },
   recInstruction: {
     fontSize: 12,
-    color: COLORS.textMuted,
     marginTop: 12,
     textAlign: 'center',
   },
@@ -530,13 +559,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: 'rgba(0, 242, 254, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(0, 242, 254, 0.3)',
   },
   previewBtnText: {
     fontSize: 12,
-    color: COLORS.primary,
     fontWeight: '600',
   },
   formSection: {
@@ -545,18 +571,14 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: COLORS.text,
     marginTop: 4,
   },
   textInput: {
-    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 14,
-    color: COLORS.text,
   },
   categoryGrid: {
     flexDirection: 'row',
@@ -571,13 +593,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
   },
   catOptionText: {
     fontSize: 12,
-    color: COLORS.textMuted,
     fontWeight: '600',
   },
   submitBtn: {
@@ -585,17 +604,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: COLORS.accent,
     paddingVertical: 14,
     borderRadius: 12,
     marginTop: 16,
-    elevation: 4,
+    elevation: 3,
   },
   submitBtnDisabled: {
-    opacity: 0.5,
+    opacity: 0.45,
   },
   submitBtnText: {
-    color: '#090D16',
     fontWeight: '800',
     fontSize: 15,
   },

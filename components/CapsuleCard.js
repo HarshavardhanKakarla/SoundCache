@@ -1,62 +1,52 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../utils/constants';
+import { useTheme } from '../utils/theme';
+import { CATEGORIES } from '../utils/constants';
 import { formatDistance } from '../utils/distance';
 
 export default function CapsuleCard({ capsule, onSelect }) {
+  const { theme } = useTheme();
   const isUnlocked = capsule.isUnlocked;
 
-  const getCategoryColor = (cat) => {
-    switch (cat) {
-      case 'Secret':
-        return '#F472B6';
-      case 'Music':
-        return '#38BDF8';
-      case 'Whisper':
-        return '#34D399';
-      case 'History':
-        return '#FBBF24';
-      default:
-        return '#A78BFA';
-    }
-  };
-
-  const catColor = getCategoryColor(capsule.category);
+  const catObj = CATEGORIES.find((c) => c.id === capsule.category);
+  const catColor = catObj?.color || theme.primary;
+  const replyCount = capsule.replyCount ?? (capsule.replies?.length || 0);
 
   return (
     <TouchableOpacity
       activeOpacity={0.85}
       style={[
         styles.card,
-        isUnlocked ? styles.cardUnlocked : styles.cardLocked,
+        {
+          backgroundColor: isUnlocked ? theme.unlockedCardBg : theme.surface,
+          borderColor: isUnlocked ? theme.unlockedCardBorder : theme.border,
+        },
       ]}
       onPress={() => onSelect(capsule)}
     >
       <View style={styles.cardHeader}>
-        {/* Category Pill */}
-        <View style={[styles.categoryBadge, { borderColor: catColor + '40' }]}>
+        <View style={[styles.categoryBadge, { borderColor: catColor + '45' }]}>
           <Text style={[styles.categoryText, { color: catColor }]}>
             {capsule.category || 'Story'}
           </Text>
         </View>
 
-        {/* Lock Status & Distance */}
         <View
           style={[
             styles.statusBadge,
-            { backgroundColor: isUnlocked ? '#00F5A020' : '#FF4B5C20' },
+            { backgroundColor: isUnlocked ? theme.accentSoft : theme.dangerSoft },
           ]}
         >
           <Ionicons
             name={isUnlocked ? 'lock-open' : 'lock-closed'}
-            size={13}
-            color={isUnlocked ? COLORS.accent : COLORS.danger}
+            size={12}
+            color={isUnlocked ? theme.accent : theme.danger}
           />
           <Text
             style={[
               styles.statusText,
-              { color: isUnlocked ? COLORS.accent : COLORS.danger },
+              { color: isUnlocked ? theme.accent : theme.danger },
             ]}
           >
             {isUnlocked ? 'UNLOCKED' : formatDistance(capsule.distanceMeters)}
@@ -64,40 +54,57 @@ export default function CapsuleCard({ capsule, onSelect }) {
         </View>
       </View>
 
-      {/* Title */}
-      <Text style={styles.title} numberOfLines={1}>
+      <Text style={[styles.title, { color: theme.text }]} numberOfLines={1}>
         {capsule.title}
       </Text>
 
-      {/* Description or hint */}
-      <Text style={styles.description} numberOfLines={2}>
+      <Text style={[styles.description, { color: theme.textMuted }]} numberOfLines={2}>
         {isUnlocked
-          ? capsule.description || 'Audio ready to listen.'
-          : `🔒 Geo-locked capsule. Move ${Math.max(
+          ? capsule.description || 'Audio ready to listen. Tap to open player & guestbook.'
+          : `Geo-locked capsule. Move ${Math.max(
               0,
               (capsule.distanceMeters || 45) - 30
             )}m closer to decode audio.`}
       </Text>
 
-      {/* Footer Info */}
-      <View style={styles.cardFooter}>
+      <View style={[styles.cardFooter, { borderTopColor: theme.border }]}>
         <View style={styles.authorGroup}>
-          <Ionicons name="person-circle-outline" size={14} color={COLORS.textMuted} />
-          <Text style={styles.authorText}>{capsule.author || 'Anonymous'}</Text>
-          <Text style={styles.dot}>•</Text>
-          <Ionicons name="time-outline" size={13} color={COLORS.textMuted} />
-          <Text style={styles.durationText}>{capsule.duration || 20}s</Text>
+          <Ionicons name="person-circle-outline" size={14} color={theme.textMuted} />
+          <Text style={[styles.authorText, { color: theme.textMuted }]}>
+            {capsule.author || 'Anonymous'}
+          </Text>
+          <Text style={[styles.dot, { color: theme.textDim }]}>•</Text>
+          <Ionicons name="time-outline" size={13} color={theme.textMuted} />
+          <Text style={[styles.durationText, { color: theme.textMuted }]}>
+            {capsule.duration || 15}s
+          </Text>
+          {replyCount > 0 && (
+            <>
+              <Text style={[styles.dot, { color: theme.textDim }]}>•</Text>
+              <Ionicons name="chatbubbles-outline" size={12} color={theme.primary} />
+              <Text style={[styles.durationText, { color: theme.primary, fontWeight: '600' }]}>
+                {replyCount}
+              </Text>
+            </>
+          )}
         </View>
 
         {isUnlocked ? (
-          <View style={styles.playAction}>
-            <Text style={styles.playActionText}>Listen</Text>
-            <Ionicons name="play" size={12} color="#090D16" />
+          <View style={[styles.playAction, { backgroundColor: theme.accent }]}>
+            <Text style={[styles.playActionText, { color: theme.primaryText }]}>Listen</Text>
+            <Ionicons name="play" size={11} color={theme.primaryText} />
           </View>
         ) : (
-          <View style={styles.walkCloserAction}>
-            <Ionicons name="lock-closed-outline" size={12} color={COLORS.textMuted} />
-            <Text style={styles.walkCloserText}>Within 30m</Text>
+          <View
+            style={[
+              styles.lockedAction,
+              { backgroundColor: theme.surfaceElevated, borderColor: theme.border },
+            ]}
+          >
+            <Ionicons name="lock-closed-outline" size={11} color={theme.textMuted} />
+            <Text style={[styles.lockedActionText, { color: theme.textMuted }]}>
+              Within 30m
+            </Text>
           </View>
         )}
       </View>
@@ -107,18 +114,10 @@ export default function CapsuleCard({ capsule, onSelect }) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: COLORS.card,
     borderRadius: 14,
-    padding: 14,
+    padding: 15,
     marginBottom: 12,
-    borderWidth: 1.2,
-  },
-  cardUnlocked: {
-    borderColor: '#00F5A060',
-    backgroundColor: '#0e1a22',
-  },
-  cardLocked: {
-    borderColor: COLORS.cardBorder,
+    borderWidth: 1,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -131,10 +130,9 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
   },
   categoryText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -154,12 +152,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '700',
-    color: COLORS.text,
     marginBottom: 4,
   },
   description: {
     fontSize: 13,
-    color: COLORS.textMuted,
     lineHeight: 18,
     marginBottom: 12,
   },
@@ -168,30 +164,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
     paddingTop: 10,
   },
   authorGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    flexShrink: 1,
   },
   authorText: {
     fontSize: 12,
-    color: COLORS.textMuted,
   },
   dot: {
-    color: COLORS.textDim,
-    marginHorizontal: 3,
+    marginHorizontal: 2,
   },
   durationText: {
     fontSize: 12,
-    color: COLORS.textMuted,
   },
   playAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.accent,
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 8,
@@ -200,23 +192,18 @@ const styles = StyleSheet.create({
   playActionText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#090D16',
   },
-  walkCloserAction: {
+  lockedAction: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(0, 242, 254, 0.1)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: 'rgba(0, 242, 254, 0.3)',
   },
-  walkCloserText: {
+  lockedActionText: {
     fontSize: 11,
-    color: COLORS.primary,
     fontWeight: '600',
   },
 });
-

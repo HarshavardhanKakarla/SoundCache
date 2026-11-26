@@ -1,35 +1,34 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated, Easing, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../utils/constants';
+import { useTheme } from '../utils/theme';
 
-export default function RadarSweep({ capsules = [], userLocation }) {
+export default function RadarSweep({ capsules = [] }) {
+  const { theme } = useTheme();
   const spinAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(0.8)).current;
+  const pulseAnim = useRef(new Animated.Value(0.9)).current;
 
   useEffect(() => {
-    // Continuous rotating radar sweep
     Animated.loop(
       Animated.timing(spinAnim, {
         toValue: 1,
-        duration: 3500,
+        duration: 3800,
         easing: Easing.linear,
         useNativeDriver: true,
       })
     ).start();
 
-    // Concentric pulse
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
-          toValue: 1.15,
-          duration: 1600,
+          toValue: 1.08,
+          duration: 1800,
           easing: Easing.out(Easing.ease),
           useNativeDriver: true,
         }),
         Animated.timing(pulseAnim, {
-          toValue: 0.9,
-          duration: 1600,
+          toValue: 0.92,
+          duration: 1800,
           easing: Easing.in(Easing.ease),
           useNativeDriver: true,
         }),
@@ -46,46 +45,50 @@ export default function RadarSweep({ capsules = [], userLocation }) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.radarWrapper}>
-        {/* Outer Ring */}
+      <View
+        style={[
+          styles.radarWrapper,
+          { backgroundColor: theme.radarBg, borderColor: theme.border },
+        ]}
+      >
         <Animated.View
           style={[
             styles.outerRing,
             {
+              borderColor: theme.radarRing,
               transform: [{ scale: pulseAnim }],
             },
           ]}
         />
-        {/* Mid Ring */}
-        <View style={styles.midRing} />
-        {/* Inner Ring (30m Unlock Zone) */}
-        <View style={styles.innerRing}>
-          <Text style={styles.zoneLabel}>30m ZONE</Text>
+        <View style={[styles.midRing, { borderColor: theme.radarRing }]} />
+        <View
+          style={[
+            styles.innerRing,
+            { borderColor: theme.accent, backgroundColor: theme.accentSoft },
+          ]}
+        >
+          <Text style={[styles.zoneLabel, { color: theme.accent }]}>30m ZONE</Text>
         </View>
 
-        {/* Crosshairs */}
-        <View style={styles.verticalAxis} />
-        <View style={styles.horizontalAxis} />
+        <View style={[styles.verticalAxis, { backgroundColor: theme.border }]} />
+        <View style={[styles.horizontalAxis, { backgroundColor: theme.border }]} />
 
-        {/* Rotating Radar Beam */}
         <Animated.View
           style={[
             styles.sweepBeam,
             {
+              borderTopColor: theme.radarSweep,
               transform: [{ rotate: spin }],
             },
           ]}
         />
 
-        {/* Center User Blip */}
-        <View style={styles.centerBlip}>
-          <Ionicons name="radio" size={14} color="#090D16" />
+        <View style={[styles.centerBlip, { backgroundColor: theme.primary }]}>
+          <Ionicons name="radio" size={13} color={theme.primaryText} />
         </View>
 
-        {/* Nearby Capsule Blips placed relative on radar */}
         {capsules.slice(0, 8).map((cap, idx) => {
-          // Compute a pseudo-polar placement on radar based on distance
-          const maxDist = 300; // max scale
+          const maxDist = 300;
           const normalizedDist = Math.min(cap.distanceMeters || 40, maxDist) / maxDist;
           const radius = 25 + normalizedDist * 80;
           const angle = (idx * (360 / Math.max(capsules.length, 1)) * Math.PI) / 180;
@@ -99,8 +102,7 @@ export default function RadarSweep({ capsules = [], userLocation }) {
                 styles.capsuleBlip,
                 {
                   transform: [{ translateX: x }, { translateY: y }],
-                  backgroundColor: cap.isUnlocked ? COLORS.accent : COLORS.danger,
-                  shadowColor: cap.isUnlocked ? COLORS.accent : COLORS.danger,
+                  backgroundColor: cap.isUnlocked ? theme.accent : theme.danger,
                 },
               ]}
             />
@@ -108,16 +110,22 @@ export default function RadarSweep({ capsules = [], userLocation }) {
         })}
       </View>
 
-      {/* Signal Status Bar */}
-      <View style={styles.statusBar}>
+      <View
+        style={[
+          styles.statusBar,
+          { backgroundColor: theme.surface, borderColor: theme.border },
+        ]}
+      >
         <View style={styles.statusBadge}>
-          <View style={[styles.statusDot, { backgroundColor: COLORS.accent }]} />
-          <Text style={styles.statusText}>{unlockedCount} Unlocked</Text>
+          <View style={[styles.statusDot, { backgroundColor: theme.accent }]} />
+          <Text style={[styles.statusText, { color: theme.text }]}>
+            {unlockedCount} Unlocked
+          </Text>
         </View>
-        <View style={styles.divider} />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <View style={styles.statusBadge}>
-          <View style={[styles.statusDot, { backgroundColor: COLORS.danger }]} />
-          <Text style={styles.statusText}>
+          <View style={[styles.statusDot, { backgroundColor: theme.danger }]} />
+          <Text style={[styles.statusText, { color: theme.text }]}>
             {capsules.length - unlockedCount} Locked Signals
           </Text>
         </View>
@@ -129,15 +137,13 @@ export default function RadarSweep({ capsules = [], userLocation }) {
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    marginVertical: 12,
+    marginVertical: 10,
   },
   radarWrapper: {
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: '#0c1220',
-    borderWidth: 2,
-    borderColor: '#1e293b',
+    width: 232,
+    height: 232,
+    borderRadius: 116,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -145,29 +151,25 @@ const styles = StyleSheet.create({
   },
   outerRing: {
     position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
+    width: 212,
+    height: 212,
+    borderRadius: 106,
     borderWidth: 1,
-    borderColor: 'rgba(0, 242, 254, 0.25)',
   },
   midRing: {
     position: 'absolute',
-    width: 150,
-    height: 150,
-    borderRadius: 75,
+    width: 146,
+    height: 146,
+    borderRadius: 73,
     borderWidth: 1,
-    borderColor: 'rgba(0, 242, 254, 0.15)',
     borderStyle: 'dashed',
   },
   innerRing: {
     position: 'absolute',
-    width: 75,
-    height: 75,
-    borderRadius: 37.5,
+    width: 74,
+    height: 74,
+    borderRadius: 37,
     borderWidth: 1.5,
-    borderColor: COLORS.accent,
-    backgroundColor: 'rgba(0, 245, 160, 0.05)',
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingTop: 3,
@@ -175,45 +177,38 @@ const styles = StyleSheet.create({
   zoneLabel: {
     fontSize: 7,
     fontWeight: '700',
-    color: COLORS.accent,
     letterSpacing: 0.5,
   },
   verticalAxis: {
     position: 'absolute',
     width: 1,
     height: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    opacity: 0.45,
   },
   horizontalAxis: {
     position: 'absolute',
     height: 1,
     width: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    opacity: 0.45,
   },
   sweepBeam: {
     position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    borderTopColor: 'rgba(0, 242, 254, 0.65)',
+    width: 232,
+    height: 232,
+    borderRadius: 116,
     borderRightColor: 'transparent',
     borderBottomColor: 'transparent',
     borderLeftColor: 'transparent',
-    borderWidth: 120,
-    opacity: 0.35,
+    borderWidth: 116,
+    opacity: 0.25,
   },
   centerBlip: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
-    elevation: 6,
   },
   capsuleBlip: {
     position: 'absolute',
@@ -221,9 +216,6 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     zIndex: 5,
-    shadowOpacity: 0.9,
-    shadowRadius: 6,
-    elevation: 4,
   },
   statusBar: {
     flexDirection: 'row',
@@ -232,9 +224,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 16,
     borderRadius: 20,
-    backgroundColor: COLORS.card,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
   },
   statusBadge: {
     flexDirection: 'row',
@@ -247,15 +237,12 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statusText: {
-    color: COLORS.text,
     fontSize: 12,
     fontWeight: '600',
   },
   divider: {
     width: 1,
     height: 12,
-    backgroundColor: COLORS.cardBorder,
     marginHorizontal: 12,
   },
 });
-

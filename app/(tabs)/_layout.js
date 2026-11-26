@@ -1,24 +1,26 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Platform, StyleSheet } from 'react-native';
-import { COLORS } from '../../utils/constants';
+import { useTheme } from '../../utils/theme';
 
 export default function TabLayout() {
+  const { theme } = useTheme();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#0c111d',
-          borderTopColor: '#1e293b',
-          borderTopWidth: 1.2,
+          backgroundColor: theme.tabBar,
+          borderTopColor: theme.border,
+          borderTopWidth: 1,
           height: Platform.OS === 'ios' ? 88 : 68,
           paddingBottom: Platform.OS === 'ios' ? 28 : 10,
           paddingTop: 8,
-          elevation: 10,
+          elevation: 8,
         },
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textDim,
+        tabBarActiveTintColor: theme.primary,
+        tabBarInactiveTintColor: theme.textDim,
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
@@ -30,13 +32,11 @@ export default function TabLayout() {
         options={{
           title: 'Radar',
           tabBarIcon: ({ color, size, focused }) => (
-            <View style={focused ? styles.activeIconWrap : null}>
-              <Ionicons
-                name={focused ? 'radio' : 'radio-outline'}
-                size={size}
-                color={color}
-              />
-            </View>
+            <Ionicons
+              name={focused ? 'radio' : 'radio-outline'}
+              size={size}
+              color={color}
+            />
           ),
         }}
       />
@@ -44,12 +44,20 @@ export default function TabLayout() {
         name="drop"
         options={{
           title: 'Drop Capsule',
-          tabBarIcon: ({ color, size, focused }) => (
-            <View style={[styles.dropIconWrap, focused && styles.dropIconActive]}>
+          tabBarIcon: ({ focused }) => (
+            <View
+              style={[
+                styles.dropIconWrap,
+                {
+                  backgroundColor: focused ? theme.primary : theme.primarySoft,
+                  borderColor: theme.primary,
+                },
+              ]}
+            >
               <Ionicons
                 name="mic"
                 size={22}
-                color={focused ? '#090D16' : COLORS.primary}
+                color={focused ? theme.primaryText : theme.primary}
               />
             </View>
           ),
@@ -73,24 +81,13 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-  activeIconWrap: {
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
-  },
   dropIconWrap: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(0, 242, 254, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: COLORS.primary,
     marginTop: -8,
   },
-  dropIconActive: {
-    backgroundColor: COLORS.primary,
-  },
 });
-
